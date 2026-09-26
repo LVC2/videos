@@ -45,7 +45,7 @@ DEBIAN_FRONTEND=noninteractive apt-get install -y \
   ffmpeg \
   git \
   golang-go \
-  nftables \
+  ufw \
   sudo \
   unattended-upgrades
 
@@ -119,10 +119,18 @@ echo "Network file written. The network will be switched to $STATIC_IP on reboot
 echo "Reboot is intentionally NOT automatic."
 echo
 
-echo "== nftables =="
-install -m 0644 "$(dirname "$0")/nftables.conf" /etc/nftables.conf
-nft -c -f /etc/nftables.conf
-systemctl enable nftables
+echo "== UFW firewall =="
+
+# UFW is the only firewall service managed by this setup.
+systemctl disable --now nftables 2>/dev/null || true
+
+ufw default deny incoming
+ufw default allow outgoing
+ufw allow ${SSH_PORT}/tcp comment 'SSH administration'
+ufw allow ${VIDEO_PORT}/tcp comment 'Video Core UI and API'
+
+ufw --force enable
+ufw status verbose
 
 echo
 echo "== systemd service =="
@@ -159,6 +167,6 @@ echo "After reboot:"
 echo "  ip -br a"
 echo "  ip route"
 echo "  systemctl status systemd-networkd --no-pager"
-echo "  systemctl status nftables --no-pager"
+echo "  ufw status verbose"
 echo "  systemctl status video-core --no-pager"
 echo "============================================"
