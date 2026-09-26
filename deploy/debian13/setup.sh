@@ -46,7 +46,13 @@ DEBIAN_FRONTEND=noninteractive apt-get install -y \
   git \
   golang-go \
   nftables \
-  sudo
+  sudo \
+  unattended-upgrades
+
+echo
+echo "== Timezone / NTP =="
+timedatectl set-timezone Asia/Aqtau
+timedatectl set-ntp true || true
 
 echo
 echo "== Hostname =="
@@ -123,6 +129,19 @@ echo "== systemd service =="
 install -m 0644 "$(dirname "$0")/video-core.service" /etc/systemd/system/video-core.service
 systemctl daemon-reload
 systemctl enable video-core
+
+echo
+echo "== Kernel/network hardening =="
+cat >/etc/sysctl.d/90-video-server.conf <<'EOF'
+net.ipv4.ip_forward=0
+net.ipv6.conf.all.forwarding=0
+net.ipv4.conf.all.rp_filter=1
+net.ipv4.conf.default.rp_filter=1
+net.ipv4.tcp_syncookies=1
+kernel.kptr_restrict=2
+kernel.dmesg_restrict=1
+EOF
+sysctl --system >/dev/null
 
 echo
 echo "============================================"
