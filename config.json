@@ -1,0 +1,11 @@
+{
+  "listen": ":8090",
+  "ffmpeg": "ffmpeg",
+  "media_dir": "./runtime",
+  "cameras": [
+    {"id": "front", "name": "Въезд", "rtsp": "${VIDEO_RTSP_FRONT}", "enabled": true},
+    {"id": "rear", "name": "Выезд", "rtsp": "${VIDEO_RTSP_REAR}", "enabled": true},
+    {"id": "cargo", "name": "Груз", "rtsp": "${VIDEO_RTSP_CARGO}", "enabled": true},
+    {"id": "inside", "name": "Внутри", "rtsp": "${VIDEO_RTSP_INSIDE}", "enabled": true}
+  ]
+}
