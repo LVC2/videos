@@ -5,7 +5,7 @@
 - Hostname: `video-server`
 - IPv4: `10.120.1.24/24`
 - Gateway: определяется автоматически из текущего default route
-- Firewall: nftables
+- Firewall: UFW
 - SSH: 22/tcp
 - Video Core: 8090/tcp
 - Service user: `videos`
@@ -37,7 +37,7 @@ reboot
 
 ```ip -br a
 ip route
-systemctl status nftables --no-pager
+ufw status verbose
 ```
 
 ## Развёртывание приложения
