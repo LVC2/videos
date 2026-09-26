@@ -1,0 +1,220 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Video Core</title>
+  <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/hls.js@1/dist/hls.min.js"></script>
+  <style>
+    :root{
+      font-family:Inter,Arial,sans-serif;
+      color:#e7eaf0;
+      background:#0b0f14
+    }
+    *{box-sizing:border-box}
+    body{margin:0;background:#0b0f14}
+    .top{
+      height:68px;
+      border-bottom:1px solid #1e2630;
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      padding:0 22px;
+      background:#0f141b
+    }
+    .brand{font-weight:800;letter-spacing:.4px}
+    .muted{color:#7e8a9a;font-size:12px}
+    .actions{display:flex;gap:8px}
+    .btn{
+      border:1px solid #2b3542;
+      background:#141b24;
+      color:#dce3eb;
+      border-radius:7px;
+      padding:7px 11px;
+      cursor:pointer
+    }
+    .btn:hover{background:#1a2430}
+    .grid{
+      padding:18px;
+      display:grid;
+      grid-template-columns:repeat(2,minmax(0,1fr));
+      gap:14px
+    }
+    .card{
+      background:#111820;
+      border:1px solid #202a35;
+      border-radius:10px;
+      overflow:hidden
+    }
+    .head{
+      height:44px;
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      padding:0 12px;
+      border-bottom:1px solid #202a35
+    }
+    .title{font-weight:700;font-size:13px}
+    .state{
+      font-size:10px;
+      text-transform:uppercase;
+      letter-spacing:.5px
+    }
+    .online{color:#55d98a}
+    .off{color:#8994a3}
+    .video{aspect-ratio:16/9;background:#05070a}
+    .video video{
+      width:100%;
+      height:100%;
+      display:block;
+      object-fit:contain
+    }
+    .empty{
+      height:100%;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      color:#556170;
+      font-size:12px
+    }
+    .foot{
+      padding:9px 12px;
+      display:flex;
+      justify-content:space-between;
+      color:#687586;
+      font-size:11px
+    }
+    .error{color:#ff7f7f;padding:18px}
+    @media(max-width:900px){
+      .grid{grid-template-columns:1fr}
+    }
+  </style>
+</head>
+<body>
+<div id="app">
+  <header class="top">
+    <div>
+      <div class="brand">VIDEO CORE</div>
+      <div class="muted">собственное media ядро</div>
+    </div>
+    <div class="actions">
+      <button class="btn" @click="reload">Обновить</button>
+      <span class="muted" style="padding:8px 0 0">
+        {{ cameras.filter(c=>c.running).length }} / {{ cameras.length }}
+      </span>
+    </div>
+  </header>
+
+  <main class="grid">
+    <section v-for="camera in cameras" :key="camera.id" class="card">
+      <div class="head">
+        <span class="title">{{ camera.name }}</span>
+        <span class="state" :class="camera.running?'online':'off'">
+          {{ camera.running ? 'RUNNING' : 'STOPPED' }}
+        </span>
+      </div>
+
+      <div class="video">
+        <video
+          :id="'video-'+camera.id"
+          controls
+          muted
+          autoplay
+          playsinline
+        ></video>
+        <div v-if="!camera.running" class="empty">Поток остановлен</div>
+      </div>
+
+      <div class="foot">
+        <span>{{ camera.id }}</span>
+        <button class="btn" @click="toggle(camera)">
+          {{ camera.running ? 'Стоп' : 'Старт' }}
+        </button>
+      </div>
+    </section>
+  </main>
+
+  <div v-if="error" class="error">{{ error }}</div>
+</div>
+
+<script>
+const {createApp}=Vue;
+
+createApp({
+  data(){
+    return {
+      cameras:[],
+      error:'',
+      players:{}
+    }
+  },
+
+  methods:{
+    async api(url,opt){
+      const r=await fetch(url,opt);
+      if(!r.ok) throw new Error(await r.text());
+      return r.json();
+    },
+
+    async reload(){
+      try{
+        this.error='';
+        this.cameras=await this.api('/api/cameras');
+        this.$nextTick(this.attach);
+      }catch(e){
+        this.error=e.message;
+      }
+    },
+
+    async toggle(c){
+      try{
+        await this.api(
+          `/api/cameras/${c.id}/${c.running?'stop':'start'}`,
+          {method:'POST'}
+        );
+
+        await new Promise(r=>setTimeout(r,350));
+        await this.reload();
+      }catch(e){
+        this.error=e.message;
+      }
+    },
+
+    attach(){
+      this.cameras
+        .filter(c=>c.running)
+        .forEach(c=>{
+          const el=document.getElementById('video-'+c.id);
+          if(!el) return;
+
+          const src=`/hls/${c.id}/index.m3u8`;
+
+          if(Hls.isSupported()){
+            if(this.players[c.id]){
+              this.players[c.id].destroy();
+            }
+
+            const h=new Hls({
+              lowLatencyMode:true,
+              maxBufferLength:4
+            });
+
+            h.loadSource(src);
+            h.attachMedia(el);
+            this.players[c.id]=h;
+          }else if(el.canPlayType('application/vnd.apple.mpegurl')){
+            el.src=src;
+          }
+        })
+    }
+  },
+
+  mounted(){
+    this.reload();
+    setInterval(this.reload,3000);
+  }
+}).mount('#app');
+</script>
+</body>
+</html>
