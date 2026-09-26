@@ -5,6 +5,7 @@ Wants=network-online.target
 
 [Service]
 Type=simple
+ConditionPathExists=/opt/videos/video-core
 User=videos
 Group=videos
 WorkingDirectory=/opt/videos
