@@ -19,7 +19,7 @@ Hikvision ISAPI
 
 Видео не проходит через FFmpeg. Video Core не декодирует и не перекодирует видеопоток.
 
-Для Hikvision используются стандартные RTSP каналы: 101 — основной поток, 102 — дополнительный. citeturn6search0turn6search2
+Для Hikvision используются стандартные RTSP каналы: 101 — основной поток, 102 — дополнительный.
 
 ## Что сейчас реализовано
 
@@ -36,9 +36,9 @@ Hikvision ISAPI
 - каталог архива: `runtime/recordings/<camera>/<YYYY-MM-DD>/`;
 - управление камерами и разделами через UI.
 
-go2rtc предоставляет WHEP WebRTC endpoint `/api/webrtc?src=...` и MP4 progressive stream API; эти интерфейсы используются Video Core вместо HLS/FFmpeg. citeturn3search2turn2search3
+go2rtc предоставляет WHEP WebRTC endpoint `/api/webrtc?src=...` и MP4 progressive stream API; эти интерфейсы используются Video Core вместо HLS/FFmpeg.
 
-Hikvision `alertStream` устанавливает постоянное соединение и передаёт события, включая `VMD` с состояниями `active/inactive`. citeturn5search12turn5search1
+Hikvision `alertStream` устанавливает постоянное соединение и передаёт события, включая `VMD` с состояниями `active/inactive`.
 
 ## Запуск
 
