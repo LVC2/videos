@@ -41,7 +41,7 @@ type Stream struct {
 type Server struct {
 	cfg     Config
 	db      *sql.DB
-	cameraList []Camera
+	cameras []Camera
 	streams map[string]*Stream
 	mu      sync.RWMutex
 }
@@ -96,7 +96,7 @@ func main() {
 	s := &Server{
 		cfg:     cfg,
 		db:      db,
-		cameraList: cameras,
+		cameras: cameras,
 		streams: map[string]*Stream{},
 	}
 
@@ -110,7 +110,7 @@ func main() {
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/health", s.health)
-	mux.HandleFunc("/api/cameras", s.cameraList)
+	mux.HandleFunc("/api/cameras", s.cameras)
 	mux.HandleFunc("/api/cameras/", s.cameraAction)
 	mux.Handle("/hls/", http.StripPrefix("/hls/", http.FileServer(http.Dir(cfg.MediaDir))))
 	mux.Handle("/", http.FileServer(http.Dir("./web")))
@@ -142,7 +142,7 @@ func loadCameras(db *sql.DB) ([]Camera, error) {
 	}
 	defer rows.Close()
 
-	var cameraList []Camera
+	var cameras []Camera
 	for rows.Next() {
 		var (
 			slug, name, rtspURL string
