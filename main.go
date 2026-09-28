@@ -61,6 +61,9 @@ type cameraRuntime struct {
 	StopTimer     *time.Timer
 	Recording     bool
 	RecordingFile string
+	StreamOK      bool
+	StreamError   string
+	LastFrame     time.Time
 }
 
 type Server struct {
@@ -151,6 +154,7 @@ func main() {
 	mux.HandleFunc("/api/sections", s.sectionsAPI)
 	mux.HandleFunc("/api/sections/", s.sectionAction)
 	mux.HandleFunc("/api/cameras", s.camerasAPI)
+	mux.HandleFunc("/api/scan", s.scanAPI)
 	mux.HandleFunc("/api/cameras/", s.cameraAction)
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/" { http.FileServer(http.Dir("./web")).ServeHTTP(w, r); return }
@@ -551,6 +555,9 @@ func (s *Server) listCameras(w http.ResponseWriter, r *http.Request) {
 		Recording bool `json:"recording"`
 		Started string `json:"started,omitempty"`
 		RecordingFile string `json:"recording_file,omitempty"`
+		StreamOK bool `json:"stream_ok"`
+		StreamError string `json:"stream_error,omitempty"`
+		LastFrame string `json:"last_frame,omitempty"`
 		SectionID *int64 `json:"section_id,omitempty"`
 		SectionName string `json:"section_name,omitempty"`
 		SortOrder int `json:"sort_order"`
@@ -575,11 +582,95 @@ func (s *Server) listCameras(w http.ResponseWriter, r *http.Request) {
 			it.Started = rt.Started.Format(time.RFC3339)
 			it.Recording = rt.Recording
 			it.RecordingFile = rt.RecordingFile
+			it.StreamOK = rt.StreamOK
+			it.StreamError = rt.StreamError
+			if !rt.LastFrame.IsZero() { it.LastFrame = rt.LastFrame.Format(time.RFC3339) }
 		}
 		out = append(out, it)
 	}
 	s.mu.RUnlock()
 	jsonResponse(w, out)
+}
+
+type scanResult struct {
+	IP string `json:"ip"`
+	RTSP bool `json:"rtsp"`
+	HTTP bool `json:"http"`
+	HTTPS bool `json:"https"`
+	Server string `json:"server,omitempty"`
+}
+
+func (s *Server) scanAPI(w http.ResponseWriter, r *http.Request) {
+	user, ok := s.requireAuth(w, r)
+	if !ok { return }
+	if !user.Admin { http.Error(w, "forbidden", http.StatusForbidden); return }
+	if r.Method != http.MethodGet { w.WriteHeader(http.StatusMethodNotAllowed); return }
+
+	cidr := strings.TrimSpace(r.URL.Query().Get("cidr"))
+	if cidr == "" { cidr = "10.120.10.0/24" }
+	ip, network, err := net.ParseCIDR(cidr)
+	if err != nil || ip.To4() == nil || network.Mask.Size() != 24 {
+		http.Error(w, "cidr must be an IPv4 /24 network", http.StatusBadRequest)
+		return
+	}
+	if !isPrivateIPv4(ip) { http.Error(w, "only private IPv4 networks are allowed", http.StatusBadRequest); return }
+
+	results := make([]scanResult, 0, 32)
+	var mu sync.Mutex
+	var wg sync.WaitGroup
+	sem := make(chan struct{}, 32)
+
+	for host := network.IP.Mask(network.Mask); network.Contains(host); incIPv4(host) {
+		if host.Equal(network.IP.Mask(network.Mask)) || host[3] == 255 { continue }
+		h := append(net.IP(nil), host...)
+		wg.Add(1)
+		go func(ip string) {
+			defer wg.Done()
+			sem <- struct{}{}; defer func(){<-sem}()
+			r := scanHost(ip)
+			if r.RTSP || r.HTTP || r.HTTPS {
+				mu.Lock(); results = append(results, r); mu.Unlock()
+			}
+		}(h.String())
+	}
+	wg.Wait()
+	slices.SortFunc(results, func(a,b scanResult) int { return strings.Compare(a.IP,b.IP) })
+	jsonResponse(w, results)
+}
+
+func isPrivateIPv4(ip net.IP) bool {
+	v := ip.To4()
+	if v == nil { return false }
+	return v[0] == 10 || (v[0] == 172 && v[1] >= 16 && v[1] <= 31) || (v[0] == 192 && v[1] == 168)
+}
+
+func incIPv4(ip net.IP) {
+	for i := len(ip)-1; i >= 0; i-- {
+		ip[i]++
+		if ip[i] != 0 { break }
+	}
+}
+
+func scanHost(ip string) scanResult {
+	r := scanResult{IP: ip}
+	r.RTSP = tcpOpen(ip, 554)
+	r.HTTP = tcpOpen(ip, 80)
+	r.HTTPS = tcpOpen(ip, 443)
+	if r.HTTP {
+		client := &http.Client{Timeout: 800*time.Millisecond}
+		if resp, err := client.Get("http://" + ip + "/"); err == nil {
+			r.Server = resp.Header.Get("Server")
+			resp.Body.Close()
+		}
+	}
+	return r
+}
+
+func tcpOpen(ip string, port int) bool {
+	conn, err := net.DialTimeout("tcp", net.JoinHostPort(ip, strconv.Itoa(port)), 350*time.Millisecond)
+	if err != nil { return false }
+	conn.Close()
+	return true
 }
 
 func (s *Server) cameraAction(w http.ResponseWriter, r *http.Request) {
@@ -664,21 +755,60 @@ func (s *Server) cameraSnapshot(w http.ResponseWriter, r *http.Request, id strin
 	}
 	resp, err := s.http.Do(req)
 	if err != nil {
-		http.Error(w, "snapshot unavailable", http.StatusBadGateway)
+		s.setStreamError(id, "Нет изображения. Проверьте IP-адрес, логин и пароль камеры.")
+		http.Error(w, "camera stream unavailable", http.StatusBadGateway)
 		return
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		body, _ := io.ReadAll(io.LimitReader(resp.Body, 1024))
-		http.Error(w, strings.TrimSpace(string(body)), http.StatusBadGateway)
+		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 1024))
+		s.setStreamError(id, "Нет изображения. Проверьте IP-адрес, логин и пароль камеры.")
+		http.Error(w, "camera stream unavailable", http.StatusBadGateway)
 		return
 	}
 
+	s.setStreamOK(id)
 	w.Header().Set("Content-Type", "image/jpeg")
 	w.Header().Set("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
 	w.Header().Set("Pragma", "no-cache")
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	_, _ = io.Copy(w, resp.Body)
+}
+
+func (s *Server) setStreamOK(id string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if rt, ok := s.runtimes[id]; ok {
+		rt.StreamOK = true
+		rt.StreamError = ""
+		rt.LastFrame = time.Now()
+	}
+}
+
+func (s *Server) setStreamError(id, message string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if rt, ok := s.runtimes[id]; ok {
+		rt.StreamOK = false
+		rt.StreamError = message
+	}
+}
+
+func (s *Server) probeSnapshot(id string) {
+	ctx, cancel := context.WithTimeout(context.Background(), 6*time.Second)
+	defer cancel()
+	u := s.cfg.Go2RTC + "/api/frame.jpeg?src=" + url.QueryEscape(id+"_sub") + "&width=320&cache=0"
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
+	if err != nil { s.setStreamError(id, "Нет изображения. Проверьте IP-адрес, логин и пароль камеры."); return }
+	resp, err := s.http.Do(req)
+	if err != nil { s.setStreamError(id, "Нет изображения. Проверьте IP-адрес, логин и пароль камеры."); return }
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		s.setStreamError(id, "Нет изображения. Проверьте IP-адрес, логин и пароль камеры.")
+		return
+	}
+	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 1024))
+	s.setStreamOK(id)
 }
 
 func (s *Server) start(camera Camera) error {
@@ -709,6 +839,7 @@ func (s *Server) start(camera Camera) error {
 	s.runtimes[camera.ID] = rt
 	s.mu.Unlock()
 
+	s.probeSnapshot(camera.ID)
 	go s.motionLoop(ctx, camera)
 	log.Printf("camera %s started via go2rtc: main=%s sub=%s", camera.ID, camera.ID+"_main", camera.ID+"_sub")
 	return nil
