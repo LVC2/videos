@@ -110,7 +110,7 @@ func main() {
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/health", s.health)
-	mux.HandleFunc("/api/cameras", s.cameras)
+	mux.HandleFunc("/api/cameras", s.listCameras)
 	mux.HandleFunc("/api/cameras/", s.cameraAction)
 	mux.Handle("/hls/", http.StripPrefix("/hls/", http.FileServer(http.Dir(cfg.MediaDir))))
 	mux.Handle("/", http.FileServer(http.Dir("./web")))
@@ -190,7 +190,7 @@ func (s *Server) findCamera(id string) (Camera, bool) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	for _, c := range s.cameraList {
+	for _, c := range s.cameras {
 		if c.ID == id {
 			return c, true
 		}
@@ -211,7 +211,7 @@ func (s *Server) health(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func (s *Server) cameras(w http.ResponseWriter, r *http.Request) {
+func (s *Server) listCameras(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		w.WriteHeader(http.StatusMethodNotAllowed)
 		return
@@ -227,8 +227,8 @@ func (s *Server) cameras(w http.ResponseWriter, r *http.Request) {
 	}
 
 	s.mu.RLock()
-	out := make([]item, 0, len(s.cameraList))
-	for _, c := range s.cameraList {
+	out := make([]item, 0, len(s.cameras))
+	for _, c := range s.cameras {
 		st, ok := s.streams[c.ID]
 		it := item{
 			ID:        c.ID,
