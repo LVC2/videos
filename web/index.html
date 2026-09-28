@@ -43,7 +43,12 @@ button{touch-action:manipulation}
 .snapshot{
   position:relative;aspect-ratio:16/9;background:#05070a;overflow:hidden
 }
-.snapshot img{width:100%;height:100%;display:block;object-fit:cover}
+.snapshot img{width:100%;height:100%;display:block;object-fit:cover;cursor:zoom-in}
+.live-modal{width:min(1400px,98vw);height:min(90vh,900px);display:flex;flex-direction:column;background:#05070a;border:1px solid #303a47;border-radius:13px;overflow:hidden;box-shadow:0 24px 80px rgba(0,0,0,.6)}
+.live-video-wrap{position:relative;flex:1;min-height:0;background:#000;display:flex;align-items:center;justify-content:center}
+.live-video{width:100%;height:100%;object-fit:contain;background:#000}
+.live-status{position:absolute;left:14px;bottom:14px;padding:7px 10px;border-radius:8px;background:rgba(0,0,0,.72);font-size:12px;color:#d5dbe3}
+.live-close{min-width:38px}
 .snapshot-placeholder{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#596575;font-size:13px}
 .snapshot-top{
   position:absolute;inset:0 0 auto 0;padding:10px 11px;
@@ -144,7 +149,7 @@ table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:11px 12p
       </div>
       <div class="camera-grid">
         <section v-for="camera in cameras" :key="camera.id" class="card">
-          <div class="snapshot">
+          <div class="snapshot" @click="openLive(camera)">
             <img :src="snapshotUrl(camera)" :alt="camera.name" loading="eager" @error="snapshotErrors[camera.id]=true">
             <div v-if="snapshotErrors[camera.id]" class="snapshot-placeholder">Кадр временно недоступен</div>
             <div class="snapshot-top">
@@ -190,6 +195,21 @@ table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:11px 12p
       <div class="modal-foot"><button class="btn primary" @click="saveConfig">Сохранить настройки</button></div>
     </section></main>
 
+    <div v-if="liveCamera" class="modal-backdrop" @click.self="closeLive">
+      <div class="live-modal">
+        <div class="modal-head">
+          <div><strong>{{liveCamera.name}}</strong><div class="muted">{{liveCamera.id}} · live · WebRTC · поток 102</div></div>
+          <div class="actions">
+            <button class="btn live-close" @click="closeLive">Закрыть</button>
+          </div>
+        </div>
+        <div class="live-video-wrap">
+          <video ref="liveVideo" class="live-video" autoplay playsinline></video>
+          <div v-if="liveError" class="live-status">{{liveError}}</div>
+        </div>
+      </div>
+    </div>
+
     <div v-if="scanOpen" class="modal-backdrop" @click.self="scanOpen=false"><div class="modal"><div class="modal-head"><div><strong>Сканирование сети</strong><div class="muted">Проверяем TCP 554, 80 и 443. Только приватные IPv4 /24.</div></div><button class="btn" @click="scanOpen=false">Закрыть</button></div><div class="scanner"><div class="scanner-form"><div class="field"><label>Сеть</label><input v-model.trim="scanCIDR" placeholder="10.120.10.0/24"></div><button class="btn primary" :disabled="scanBusy" @click="scanNetwork">{{scanBusy?'Сканирование…':'Начать сканирование'}}</button></div><div v-if="scanResults.length" class="scan-results"><div v-for="r in scanResults" :key="r.ip" class="scan-item"><div><strong>{{r.ip}}</strong><div class="muted">{{r.server||'Устройство отвечает по сети'}}</div></div><div class="port-badges"><span v-if="r.rtsp" class="port-badge">RTSP 554</span><span v-if="r.http" class="port-badge">HTTP 80</span><span v-if="r.https" class="port-badge">HTTPS 443</span><button class="btn" @click="form.ip=r.ip;form.username='admin';form.password='';form.enabled=true;form.autostart=true;form.section_id='';form.sort_order=0;editing=false;editingId='';scanOpen=false;modal=true">Добавить</button></div></div></div><div v-else-if="!scanBusy" class="empty-list">Ничего не найдено.</div></div></div></div>
     <div v-if="modal" class="modal-backdrop" @click.self="modal=false"><div class="modal"><div class="modal-head"><strong>{{editing?'Редактирование камеры':'Новая камера'}}</strong><button class="btn" @click="modal=false">Закрыть</button></div><form @submit.prevent="saveCamera"><div class="form"><div class="field full"><label>IP-адрес</label><input v-model.trim="form.ip" required></div><div class="field"><label>Логин</label><input v-model.trim="form.username" required></div><div class="field"><label>Пароль</label><input v-model="form.password" type="password" :required="!editing"></div><div class="field"><label>Раздел</label><select v-model="form.section_id"><option value="">Без раздела</option><option v-for="s in sections" :value="String(s.id)">{{s.name}}</option></select></div><div class="field"><label>Порядок</label><input v-model.number="form.sort_order" type="number" min="0"></div><div class="checks"><label><input v-model="form.enabled" type="checkbox"> Камера включена</label><label><input v-model="form.autostart" type="checkbox"> Автозапуск</label></div></div><div class="modal-foot"><button type="button" class="btn" @click="modal=false">Отмена</button><button class="btn primary" type="submit">{{editing?'Сохранить':'Добавить'}}</button></div></form></div></div>
 
@@ -204,7 +224,7 @@ table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:11px 12p
 <script>
 const {createApp}=Vue;
 createApp({
-data(){return{ready:false,authenticated:false,setupRequired:false,currentUser:null,login:{username:'',password:'',displayName:''},error:'',tab:'live',cameras:[],allCameras:[],sections:[],users:[],snapshotTick:0,snapshotErrors:{},scanOpen:false,scanCIDR:'10.120.10.0/24',scanBusy:false,scanResults:[],modal:false,editing:false,editingId:'',form:{ip:'',username:'',password:'',enabled:true,autostart:true,section_id:'',sort_order:0},sectionModal:false,sectionEditing:false,sectionForm:{id:null,name:'',sort_order:0},userModal:false,userEditing:false,userEditingId:0,userForm:{username:'',displayName:'',password:'',role:'viewer',scope:'selected',sectionIDs:[],cameraIDs:[],active:true},config:{recording_dir:'',motion_post_seconds:10}}},
+data(){return{ready:false,authenticated:false,setupRequired:false,currentUser:null,login:{username:'',password:'',displayName:''},error:'',tab:'live',cameras:[],allCameras:[],sections:[],users:[],snapshotTick:0,snapshotErrors:{},scanOpen:false,scanCIDR:'10.120.10.0/24',scanBusy:false,scanResults:[],modal:false,editing:false,editingId:'',form:{ip:'',username:'',password:'',enabled:true,autostart:true,section_id:'',sort_order:0},sectionModal:false,sectionEditing:false,sectionForm:{id:null,name:'',sort_order:0},userModal:false,userEditing:false,userEditingId:0,userForm:{username:'',displayName:'',password:'',role:'viewer',scope:'selected',sectionIDs:[],cameraIDs:[],active:true},config:{recording_dir:'',motion_post_seconds:10},liveCamera:null,liveError:'',livePC:null}}},
 methods:{
 async api(url,opt){const r=await fetch(url,opt||{});if(!r.ok){let t=await r.text();throw new Error(t||('HTTP '+r.status));}return r.json()},
 async checkAuth(){try{const d=await this.api('/api/auth/status');this.setupRequired=!!d.setup_required;this.authenticated=!!d.authenticated;this.currentUser=d.user;if(this.authenticated)await this.reload();}catch(e){this.error=e.message}finally{this.ready=true}},
@@ -224,6 +244,48 @@ async toggle(c){try{await this.api('/api/cameras/'+encodeURIComponent(c.id)+'/'+
 scanOpenNetwork(){this.scanResults=[];this.scanOpen=true},
 async scanNetwork(){try{this.scanBusy=true;this.error='';this.scanResults=await this.api('/api/scan?cidr='+encodeURIComponent(this.scanCIDR));}catch(e){this.error=e.message}finally{this.scanBusy=false}},
 snapshotUrl(c){return '/api/cameras/'+encodeURIComponent(c.id)+'/snapshot?t='+this.snapshotTick},
+async openLive(camera){
+  this.closeLive();
+  this.liveCamera=camera;
+  this.liveError='Подключение…';
+  await this.$nextTick();
+  try{
+    const pc=new RTCPeerConnection();
+    this.livePC=pc;
+    pc.ontrack=e=>{if(this.$refs.liveVideo)this.$refs.liveVideo.srcObject=e.streams[0]};
+    pc.onconnectionstatechange=()=>{
+      if(['failed','disconnected','closed'].includes(pc.connectionState)&&this.liveCamera){
+        this.liveError='Live-поток недоступен.';
+      } else if(pc.connectionState==='connected'){
+        this.liveError='';
+      }
+    };
+    pc.addTransceiver('video',{direction:'recvonly'});
+    const offer=await pc.createOffer();
+    await pc.setLocalDescription(offer);
+    if(pc.iceGatheringState!=='complete'){
+      await new Promise(resolve=>{
+        const timer=setTimeout(resolve,3000);
+        pc.onicegatheringstatechange=()=>{
+          if(pc.iceGatheringState==='complete'){clearTimeout(timer);resolve()}
+        };
+      });
+    }
+    const answer=await fetch('/api/cameras/'+encodeURIComponent(camera.id)+'/webrtc',{
+      method:'POST',headers:{'Content-Type':'application/sdp'},body:pc.localDescription.sdp
+    });
+    if(!answer.ok) throw new Error((await answer.text())||('HTTP '+answer.status));
+    await pc.setRemoteDescription({type:'answer',sdp:await answer.text()});
+  }catch(e){
+    this.liveError='Не удалось открыть live: '+e.message;
+  }
+},
+closeLive(){
+  if(this.livePC){this.livePC.ontrack=null;this.livePC.close();this.livePC=null}
+  if(this.liveCamera&&this.$refs.liveVideo)this.$refs.liveVideo.srcObject=null;
+  this.liveCamera=null;
+  this.liveError='';
+},
 refreshSnapshots(){this.snapshotErrors={};this.snapshotTick=Date.now()},
 openSectionNew(){this.sectionEditing=false;this.sectionForm={id:null,name:'',sort_order:0};this.sectionModal=true},
 openSectionEdit(s){this.sectionEditing=true;this.sectionForm={id:s.id,name:s.name,sort_order:s.sort_order||0};this.sectionModal=true},
@@ -236,7 +298,7 @@ async removeUser(u){if(!confirm('Удалить пользователя «'+u.d
 async saveConfig(){try{this.config.motion_post_seconds=Number(this.config.motion_post_seconds)||0;await this.api('/api/config',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({RecordingDir:this.config.recording_dir,MotionPostSeconds:this.config.motion_post_seconds})});alert('Настройки сохранены')}catch(e){this.error=e.message}}
 },
 computed:{},
-mounted(){this.checkAuth();setInterval(()=>{if(this.authenticated&&this.tab==='live')this.refreshSnapshots()},5000);setInterval(()=>{if(this.authenticated)this.reload()},15000)}
+mounted(){window.addEventListener('keydown',e=>{if(e.key==='Escape')this.closeLive()});this.checkAuth();setInterval(()=>{if(this.authenticated&&this.tab==='live')this.refreshSnapshots()},5000);setInterval(()=>{if(this.authenticated)this.reload()},15000)}
 }).mount('#app');
 </script>
 </body>
