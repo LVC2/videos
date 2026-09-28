@@ -521,41 +521,6 @@ func (s *Server) cameraAction(w http.ResponseWriter, r *http.Request) {
 }
 
 
-	parts := strings.Split(strings.TrimPrefix(r.URL.Path, "/api/cameras/"), "/")
-
-	if len(parts) != 2 || parts[0] == "" {
-		w.WriteHeader(http.StatusNotFound)
-		return
-	}
-
-	id, action := parts[0], parts[1]
-	camera, ok := s.findCamera(id)
-
-	if !ok {
-		http.Error(w, "camera not found", http.StatusNotFound)
-		return
-	}
-
-	switch action {
-	case "start":
-		if !camera.Enabled {
-			http.Error(w, "camera disabled", http.StatusConflict)
-			return
-		}
-		if err := s.start(camera); err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-	case "stop":
-		s.stop(id)
-	default:
-		http.Error(w, "unknown action", http.StatusNotFound)
-		return
-	}
-
-	jsonResponse(w, map[string]any{"status": "ok"})
-}
-
 func (s *Server) start(camera Camera) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
