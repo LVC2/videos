@@ -824,18 +824,47 @@ func (s *Server) setStreamError(id, message string) {
 }
 
 func (s *Server) probeSnapshot(id string) {
-	ctx, cancel := context.WithTimeout(context.Background(), 6*time.Second)
-	defer cancel()
-	u := s.cfg.Go2RTC + "/api/frame.jpeg?src=" + url.QueryEscape(id+"_sub") + "&width=320&cache=0"
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
-	if err != nil { s.setStreamError(id, "Нет изображения. Проверьте IP-адрес, логин и пароль камеры."); return }
-	resp, err := s.http.Do(req)
-	if err != nil { s.setStreamError(id, "Нет изображения. Проверьте IP-адрес, логин и пароль камеры."); return }
-	defer resp.Body.Close()
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		s.setStreamError(id, "Нет изображения. Проверьте IP-адрес, логин и пароль камеры.")
+	camera, ok := s.findCamera(id)
+	if !ok {
+		s.setStreamError(id, "Камера не найдена.")
 		return
 	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 6*time.Second)
+	defer cancel()
+
+	u := "http://" + camera.IP + "/ISAPI/Streaming/channels/102/picture"
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
+	if err != nil {
+		s.setStreamError(id, "Не удалось подготовить запрос к камере.")
+		return
+	}
+	if camera.Username != "" {
+		req.SetBasicAuth(camera.Username, camera.Password)
+	}
+
+	resp, err := s.http.Do(req)
+	if err != nil {
+		s.setStreamError(id, "Не удалось подключиться к камере.")
+		return
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
+		s.setStreamError(id, "Ошибка авторизации камеры: проверьте логин и пароль.")
+		return
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		s.setStreamError(id, fmt.Sprintf("Камера вернула HTTP %d.", resp.StatusCode))
+		return
+	}
+
+	mediaType, _, _ := mime.ParseMediaType(resp.Header.Get("Content-Type"))
+	if mediaType != "" && mediaType != "image/jpeg" {
+		s.setStreamError(id, "Камера вернула не JPEG-снимок.")
+		return
+	}
+
 	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 1024))
 	s.setStreamOK(id)
 }
@@ -1298,4 +1327,3 @@ func (s *Server) listUsers(w http.ResponseWriter,r *http.Request){
 
 func (s *Server) userDetails(w http.ResponseWriter,id int64){
 	var username,name,role string;var active,allSec,allCam bool;if err:=s.db.QueryRow("SELECT username,display_name,is_active,all_sections,all_cameras FROM users WHERE id=?",id).Scan(&username,&name,&active,&allSec,&allCam);err!=nil{http.Error(w,"user not found",404);return};role="viewer";_=s.db.QueryRow("SELECT r.code FROM user_roles ur JOIN roles r ON r.id=ur.role_id WHERE ur.user_id=? ORDER BY r.code LIMIT 1",id).Scan(&role);scope:="selected";if allCam{scope="all_cameras"}else if allSec{scope="section"};sectionIDs:=[]int64{};cameraIDs:=[]int64{}
-	rows,_:=s.db.Query("SELECT section_id FROM user_sections WHERE user_id=?",id);if rows!=nil{for rows.Next(){var x int64;_=rows.Scan(&x);sectionIDs=append(sectionIDs,x)};rows.Close()};rows,_=s.db.Query("SELECT camera_id FROM user_cameras WHERE user_id=?",id);if rows!=nil{for rows.Next(){var x int64;_=rows.Scan(&x);cameraIDs=append(cameraIDs,x)};rows.Close()}
