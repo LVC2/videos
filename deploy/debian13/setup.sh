@@ -42,7 +42,6 @@ apt-get update
 DEBIAN_FRONTEND=noninteractive apt-get install -y \
   ca-certificates \
   curl \
-  ffmpeg \
   git \
   golang-go \
   ufw \
