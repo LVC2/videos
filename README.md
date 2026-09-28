@@ -1,19 +1,48 @@
 # Video Server / Video Core
 
-Минимальный самостоятельный видеосервер:
+Самостоятельный видеосервер на Go + MariaDB, работающий через **go2rtc**.
 
-- Go core: управление камерами и FFmpeg-процессами;
-- MariaDB: конфигурация камер;
-- RTSP input;
-- HLS output;
-- Vue 3 UI;
-- запуск/остановка каждого потока;
-- один процесс FFmpeg на активную камеру;
-- без go2rtc.
+## Архитектура
+
+```
+Hikvision
+ ├── Main Stream (101) ──> go2rtc ──> архив при VMD
+ └── Sub Stream  (102) ──> go2rtc ──> WebRTC live
+
+Hikvision ISAPI
+ └── /ISAPI/Event/notification/alertStream
+             │
+             └── VMD active/inactive
+                     │
+                     └── video-core управляет записью
+```
+
+Видео не проходит через FFmpeg. Video Core не декодирует и не перекодирует видеопоток.
+
+Для Hikvision используются стандартные RTSP каналы: 101 — основной поток, 102 — дополнительный. citeturn6search0turn6search2
+
+## Что сейчас реализовано
+
+- Go core;
+- MariaDB для конфигурации камер;
+- go2rtc как media layer;
+- автоматическая регистрация Main/Sub RTSP streams в go2rtc;
+- WebRTC live через Sub Stream;
+- Hikvision Digest Authentication;
+- получение VMD событий с камеры;
+- запуск записи при `VMD active`;
+- остановка записи после `motion_post_seconds`;
+- запись Main Stream через go2rtc `/api/stream.mp4`;
+- каталог архива: `runtime/recordings/<camera>/<YYYY-MM-DD>/`;
+- управление камерами и разделами через UI.
+
+go2rtc предоставляет WHEP WebRTC endpoint `/api/webrtc?src=...` и MP4 progressive stream API; эти интерфейсы используются Video Core вместо HLS/FFmpeg. citeturn3search2turn2search3
+
+Hikvision `alertStream` устанавливает постоянное соединение и передаёт события, включая `VMD` с состояниями `active/inactive`. citeturn5search12turn5search1
 
 ## Запуск
 
-Конфигурация подключения к MariaDB передаётся через переменную окружения:
+Конфигурация MariaDB:
 
 ```bash
 export VIDEOS_DB_DSN='user:password@tcp(127.0.0.1:3306)/videos?parseTime=true&charset=utf8mb4'
@@ -21,26 +50,38 @@ go build -o video-core .
 ./video-core
 ```
 
-В production переменная задаётся через systemd EnvironmentFile.
+Production использует systemd EnvironmentFile.
 
-Камеры загружаются из таблицы `cameras`. Используются поля `slug`, `name`, `rtsp_url`, `rtsp_username`, `rtsp_password`, `enabled`, `autostart`.
+## Конфигурация
 
-RTSP-учётные данные не возвращаются через `/api/cameras`.
+`config.json`:
 
-UI: `http://SERVER:8090/`
+```json
+{
+  "listen": "127.0.0.1:8090",
+  "go2rtc": "http://127.0.0.1:1984",
+  "media_dir": "./runtime",
+  "motion_post_seconds": 10,
+  "db_dsn": ""
+}
+```
 
-## Важно
+`go2rtc` — HTTP API адрес локального go2rtc.
 
-Первая версия намеренно простая. Она не является заменой полноценному WebRTC media server.
-Для камер H.264 используется `-c:v copy`, поэтому FFmpeg не перекодирует видео.
+## Принцип записи
 
-Следующие этапы:
+При `VMD active` Video Core открывает Main Stream через go2rtc и сохраняет получаемый MP4-поток в архив.
 
-1. WebRTC output для низкой задержки.
-2. Автоматический reconnect RTSP.
-3. Snapshot API.
-4. Запись архива.
-5. Детектор движения.
-6. PTZ/zoom controls.
-7. Авторизация и роли.
-8. Управление камерами и разделами через UI.
+При `VMD inactive` запись продолжается ещё `motion_post_seconds` секунд.
+
+Сервер не выполняет motion detection и не перекодирует видео.
+
+## Следующий этап
+
+1. проверить реальные VMD события на Hikvision;
+2. проверить MP4-файлы после реального движения;
+3. добавить таблицу архива и API записей;
+4. добавить страницу архива/поиск/скачивание;
+5. добавить pre-record buffer без перекодирования;
+6. добавить очистку архива по сроку/свободному месту;
+7. добавить права доступа.
