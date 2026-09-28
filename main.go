@@ -766,7 +766,11 @@ func (s *Server) cameraSnapshot(w http.ResponseWriter, r *http.Request, id strin
 		req.SetBasicAuth(camera.Username, camera.Password)
 	}
 
-	resp, err := s.http.Do(req)
+	client := &http.Client{
+		Transport: dac.NewDigestTransport(camera.Username, camera.Password, http.DefaultTransport),
+		Timeout: 15 * time.Second,
+	}
+	resp, err := client.Do(req)
 	if err != nil {
 		message := "Не удалось подключиться к камере."
 		if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, os.ErrDeadlineExceeded) {
@@ -847,7 +851,11 @@ func (s *Server) probeSnapshot(id string) {
 		req.SetBasicAuth(camera.Username, camera.Password)
 	}
 
-	resp, err := s.http.Do(req)
+	client := &http.Client{
+		Transport: dac.NewDigestTransport(camera.Username, camera.Password, http.DefaultTransport),
+		Timeout: 6 * time.Second,
+	}
+	resp, err := client.Do(req)
 	if err != nil {
 		s.setStreamError(id, "Не удалось подключиться к камере.")
 		return
