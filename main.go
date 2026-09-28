@@ -41,7 +41,7 @@ type Stream struct {
 type Server struct {
 	cfg     Config
 	db      *sql.DB
-	cameras []Camera
+	cameraList []Camera
 	streams map[string]*Stream
 	mu      sync.RWMutex
 }
@@ -96,7 +96,7 @@ func main() {
 	s := &Server{
 		cfg:     cfg,
 		db:      db,
-		cameras: cameras,
+		cameraList: cameras,
 		streams: map[string]*Stream{},
 	}
 
@@ -110,7 +110,7 @@ func main() {
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/health", s.health)
-	mux.HandleFunc("/api/cameras", s.cameras)
+	mux.HandleFunc("/api/cameras", s.cameraList)
 	mux.HandleFunc("/api/cameras/", s.cameraAction)
 	mux.Handle("/hls/", http.StripPrefix("/hls/", http.FileServer(http.Dir(cfg.MediaDir))))
 	mux.Handle("/", http.FileServer(http.Dir("./web")))
@@ -142,7 +142,7 @@ func loadCameras(db *sql.DB) ([]Camera, error) {
 	}
 	defer rows.Close()
 
-	var cameras []Camera
+	var cameraList []Camera
 	for rows.Next() {
 		var (
 			slug, name, rtspURL string
@@ -190,7 +190,7 @@ func (s *Server) findCamera(id string) (Camera, bool) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	for _, c := range s.cameras {
+	for _, c := range s.cameraList {
 		if c.ID == id {
 			return c, true
 		}
@@ -227,8 +227,8 @@ func (s *Server) cameras(w http.ResponseWriter, r *http.Request) {
 	}
 
 	s.mu.RLock()
-	out := make([]item, 0, len(s.cameras))
-	for _, c := range s.cameras {
+	out := make([]item, 0, len(s.cameraList))
+	for _, c := range s.cameraList {
 		st, ok := s.streams[c.ID]
 		it := item{
 			ID:        c.ID,
