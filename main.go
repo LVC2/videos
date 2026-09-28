@@ -920,7 +920,7 @@ func (s *Server) recordLoop(ctx context.Context, camera Camera, path string) {
 		log.Printf("camera %s recording stopped: %s", camera.ID, path)
 	}()
 
-	u := s.cfg.Go2RTC + "/api/stream.mp4?src=" + url.QueryEscape(camera.ID+"_main") + "&mp4=all"
+	u := s.cfg.Go2RTC + "/api/stream.mp4?src=" + url.QueryEscape(camera.ID+"_main")
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
 	if err != nil {
 		log.Printf("camera %s recording request: %v", camera.ID, err)
