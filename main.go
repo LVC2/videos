@@ -1,29 +1,35 @@
 package main
 
 import (
+	"database/sql"
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
 	"time"
+
+	_ "github.com/go-sql-driver/mysql"
 )
 
 type Camera struct {
-	ID      string `json:"id"`
-	Name    string `json:"name"`
-	RTSP    string `json:"rtsp"`
-	Enabled bool   `json:"enabled"`
+	ID        string
+	Name      string
+	RTSP      string
+	Enabled   bool
+	Autostart bool
 }
 
 type Config struct {
-	Listen   string   `json:"listen"`
-	FFmpeg   string   `json:"ffmpeg"`
-	MediaDir string   `json:"media_dir"`
-	Cameras  []Camera `json:"cameras"`
+	Listen   string `json:"listen"`
+	FFmpeg   string `json:"ffmpeg"`
+	MediaDir string `json:"media_dir"`
+	DBDSN    string `json:"db_dsn"`
 }
 
 type Stream struct {
@@ -34,6 +40,8 @@ type Stream struct {
 
 type Server struct {
 	cfg     Config
+	db      *sql.DB
+	cameras []Camera
 	streams map[string]*Stream
 	mu      sync.RWMutex
 }
@@ -42,10 +50,6 @@ func main() {
 	cfg, err := loadConfig("config.json")
 	if err != nil {
 		log.Fatal(err)
-	}
-
-	for i := range cfg.Cameras {
-		cfg.Cameras[i].RTSP = os.ExpandEnv(cfg.Cameras[i].RTSP)
 	}
 
 	if cfg.Listen == "" {
@@ -58,13 +62,50 @@ func main() {
 		cfg.MediaDir = "./runtime"
 	}
 
+	dsn := strings.TrimSpace(os.Getenv("VIDEOS_DB_DSN"))
+	if dsn == "" {
+		dsn = strings.TrimSpace(cfg.DBDSN)
+	}
+	if dsn == "" {
+		log.Fatal("VIDEOS_DB_DSN is not configured")
+	}
+
+	db, err := sql.Open("mysql", dsn)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer db.Close()
+
+	db.SetMaxOpenConns(5)
+	db.SetMaxIdleConns(2)
+	db.SetConnMaxLifetime(30 * time.Minute)
+
+	if err := db.Ping(); err != nil {
+		log.Fatalf("MariaDB connection failed: %v", err)
+	}
+
+	cameras, err := loadCameras(db)
+	if err != nil {
+		log.Fatalf("loading cameras from MariaDB failed: %v", err)
+	}
+
 	if err := os.MkdirAll(cfg.MediaDir, 0755); err != nil {
 		log.Fatal(err)
 	}
 
 	s := &Server{
 		cfg:     cfg,
+		db:      db,
+		cameras: cameras,
 		streams: map[string]*Stream{},
+	}
+
+	for _, camera := range cameras {
+		if camera.Enabled && camera.Autostart {
+			if err := s.start(camera); err != nil {
+				log.Printf("autostart camera %s failed: %v", camera.ID, err)
+			}
+		}
 	}
 
 	mux := http.NewServeMux()
@@ -92,8 +133,64 @@ func loadConfig(path string) (Config, error) {
 	return c, nil
 }
 
+func loadCameras(db *sql.DB) ([]Camera, error) {
+	const query = "SELECT slug, name, rtsp_url, COALESCE(rtsp_username, ''), COALESCE(rtsp_password, ''), enabled, autostart FROM cameras ORDER BY sort_order, id"
+
+	rows, err := db.Query(query)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var cameras []Camera
+	for rows.Next() {
+		var (
+			slug, name, rtspURL string
+			username, password  string
+			enabled, autostart  bool
+		)
+
+		if err := rows.Scan(&slug, &name, &rtspURL, &username, &password, &enabled, &autostart); err != nil {
+			return nil, err
+		}
+
+		cameras = append(cameras, Camera{
+			ID:        slug,
+			Name:      name,
+			RTSP:      buildRTSPURL(rtspURL, username, password),
+			Enabled:   enabled,
+			Autostart: autostart,
+		})
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	log.Printf("loaded %d cameras from MariaDB", len(cameras))
+	return cameras, nil
+}
+
+func buildRTSPURL(raw, username, password string) string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" || username == "" {
+		return raw
+	}
+
+	u, err := url.Parse(raw)
+	if err != nil {
+		return raw
+	}
+
+	u.User = url.UserPassword(username, password)
+	return u.String()
+}
+
 func (s *Server) findCamera(id string) (Camera, bool) {
-	for _, c := range s.cfg.Cameras {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	for _, c := range s.cameras {
 		if c.ID == id {
 			return c, true
 		}
@@ -103,8 +200,13 @@ func (s *Server) findCamera(id string) (Camera, bool) {
 }
 
 func (s *Server) health(w http.ResponseWriter, r *http.Request) {
+	status := "ok"
+	if err := s.db.Ping(); err != nil {
+		status = "database_error"
+	}
+
 	jsonResponse(w, map[string]any{
-		"status": "ok",
+		"status": status,
 		"time":   time.Now().UTC(),
 	})
 }
@@ -116,19 +218,24 @@ func (s *Server) cameras(w http.ResponseWriter, r *http.Request) {
 	}
 
 	type item struct {
-		Camera
-		Running bool   `json:"running"`
-		Started string `json:"started,omitempty"`
+		ID        string `json:"id"`
+		Name      string `json:"name"`
+		Enabled   bool   `json:"enabled"`
+		Autostart bool   `json:"autostart"`
+		Running   bool   `json:"running"`
+		Started   string `json:"started,omitempty"`
 	}
 
-	out := make([]item, 0, len(s.cfg.Cameras))
-
 	s.mu.RLock()
-	for _, c := range s.cfg.Cameras {
+	out := make([]item, 0, len(s.cameras))
+	for _, c := range s.cameras {
 		st, ok := s.streams[c.ID]
 		it := item{
-			Camera:  c,
-			Running: ok && st.Cmd != nil && st.Cmd.Process != nil,
+			ID:        c.ID,
+			Name:      c.Name,
+			Enabled:   c.Enabled,
+			Autostart: c.Autostart,
+			Running:   ok && st.Cmd != nil && st.Cmd.Process != nil,
 		}
 
 		if ok {
@@ -160,6 +267,10 @@ func (s *Server) cameraAction(w http.ResponseWriter, r *http.Request) {
 
 	switch action {
 	case "start":
+		if !camera.Enabled {
+			http.Error(w, "camera disabled", http.StatusConflict)
+			return
+		}
 		if err := s.start(camera); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
@@ -183,7 +294,7 @@ func (s *Server) start(camera Camera) error {
 	}
 
 	if strings.TrimSpace(camera.RTSP) == "" {
-		return nil
+		return fmt.Errorf("camera %s has empty RTSP URL", camera.ID)
 	}
 
 	dir := filepath.Join(s.cfg.MediaDir, camera.ID)
