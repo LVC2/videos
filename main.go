@@ -743,28 +743,55 @@ func (s *Server) cameraAction(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) cameraSnapshot(w http.ResponseWriter, r *http.Request, id string) {
-	if _, ok := s.findCamera(id); !ok {
+	camera, ok := s.findCamera(id)
+	if !ok {
 		http.Error(w, "camera not found", http.StatusNotFound)
 		return
 	}
 
-	u := s.cfg.Go2RTC + "/api/frame.jpeg?src=" + url.QueryEscape(id+"_sub") + "&width=1280&cache=0"
+	// Hikvision can provide a JPEG snapshot directly over HTTP. This avoids
+	// requiring go2rtc/FFmpeg to decode the substream just for the monitor.
+	u := "http://" + camera.IP + "/ISAPI/Streaming/channels/102/picture"
 	req, err := http.NewRequestWithContext(r.Context(), http.MethodGet, u, nil)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	if camera.Username != "" {
+		req.SetBasicAuth(camera.Username, camera.Password)
+	}
+
 	resp, err := s.http.Do(req)
 	if err != nil {
-		s.setStreamError(id, "Нет изображения. Проверьте IP-адрес, логин и пароль камеры.")
-		http.Error(w, "camera stream unavailable", http.StatusBadGateway)
+		message := "Не удалось подключиться к камере."
+		if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, os.ErrDeadlineExceeded) {
+			message = "Таймаут подключения к камере."
+		}
+		s.setStreamError(id, message)
+		http.Error(w, message, http.StatusBadGateway)
 		return
 	}
 	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
+		message := "Ошибка авторизации камеры: проверьте логин и пароль."
+		s.setStreamError(id, message)
+		http.Error(w, message, http.StatusBadGateway)
+		return
+	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 1024))
-		s.setStreamError(id, "Нет изображения. Проверьте IP-адрес, логин и пароль камеры.")
-		http.Error(w, "camera stream unavailable", http.StatusBadGateway)
+		message := fmt.Sprintf("Камера вернула HTTP %d.", resp.StatusCode)
+		s.setStreamError(id, message)
+		http.Error(w, message, http.StatusBadGateway)
+		return
+	}
+
+	contentType := resp.Header.Get("Content-Type")
+	mediaType, _, _ := mime.ParseMediaType(contentType)
+	if mediaType != "" && mediaType != "image/jpeg" {
+		message := "Камера вернула не JPEG-снимок."
+		s.setStreamError(id, message)
+		http.Error(w, message, http.StatusBadGateway)
 		return
 	}
 
@@ -1298,27 +1325,3 @@ func (s *Server) configAPI(w http.ResponseWriter,r *http.Request){
 		jsonResponse(w,map[string]any{"recording_dir":s.cfg.RecordingDir,"motion_post_seconds":s.cfg.MotionPostSeconds})
 	case http.MethodPut:
 		var p struct{RecordingDir string;MotionPostSeconds int}
-		if err:=decodeJSON(r,&p);err!=nil{http.Error(w,err.Error(),400);return}
-		p.RecordingDir=strings.TrimSpace(p.RecordingDir)
-		if p.RecordingDir==""{http.Error(w,"recording directory is required",400);return}
-		if p.MotionPostSeconds<0{p.MotionPostSeconds=0}
-		s.cfg.RecordingDir=p.RecordingDir;s.cfg.MotionPostSeconds=p.MotionPostSeconds
-		data,err:=json.MarshalIndent(s.cfg,"","  ");if err!=nil{http.Error(w,err.Error(),500);return}
-		if err=os.WriteFile("config.json",append(data,'\n'),0644);err!=nil{http.Error(w,err.Error(),500);return}
-		if err=os.MkdirAll(s.cfg.RecordingDir,0755);err!=nil{http.Error(w,err.Error(),500);return}
-		jsonResponse(w,map[string]any{"status":"ok","recording_dir":s.cfg.RecordingDir,"motion_post_seconds":s.cfg.MotionPostSeconds})
-	default:w.WriteHeader(405)
-	}
-}
-
-func (s *Server) cameraWebRTC(w http.ResponseWriter,r *http.Request,id string){
-	camera,ok:=s.findCamera(id);if !ok{http.Error(w,"camera not found",404);return}
-	body,err:=io.ReadAll(io.LimitReader(r.Body,1024*1024));if err!=nil{http.Error(w,err.Error(),400);return}
-	u:=s.cfg.Go2RTC+"/api/webrtc?src="+url.QueryEscape(id+"_sub")
-	req,err:=http.NewRequestWithContext(r.Context(),http.MethodPost,u,strings.NewReader(string(body)));if err!=nil{http.Error(w,err.Error(),500);return}
-	req.Header.Set("Content-Type","application/sdp")
-	resp,err:=s.http.Do(req);if err!=nil{http.Error(w,err.Error(),502);return};defer resp.Body.Close()
-	if resp.StatusCode<200||resp.StatusCode>=300{data,_:=io.ReadAll(io.LimitReader(resp.Body,4096));http.Error(w,strings.TrimSpace(string(data)),resp.StatusCode);return}
-	w.Header().Set("Content-Type",resp.Header.Get("Content-Type"));if w.Header().Get("Content-Type")==""{w.Header().Set("Content-Type","application/sdp")};w.WriteHeader(resp.StatusCode);_,_=io.Copy(w,resp.Body)
-	_ = camera
-}
