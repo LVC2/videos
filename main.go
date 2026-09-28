@@ -591,6 +591,12 @@ func (s *Server) cameraAction(w http.ResponseWriter, r *http.Request) {
 	}
 	id, action := parts[0], parts[1]
 
+	if action == "snapshot" && r.Method == http.MethodGet {
+		if !s.userCanViewCamera(user, id) { http.Error(w, "forbidden", http.StatusForbidden); return }
+		s.cameraSnapshot(w, r, id)
+		return
+	}
+
 	if action == "webrtc" && r.Method == http.MethodPost {
 		if !s.userCanViewCamera(user, id) { http.Error(w, "forbidden", http.StatusForbidden); return }
 		s.cameraWebRTC(w, r, id)
@@ -642,6 +648,37 @@ func (s *Server) cameraAction(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	jsonResponse(w, map[string]any{"status": "ok"})
+}
+
+func (s *Server) cameraSnapshot(w http.ResponseWriter, r *http.Request, id string) {
+	if _, ok := s.findCamera(id); !ok {
+		http.Error(w, "camera not found", http.StatusNotFound)
+		return
+	}
+
+	u := s.cfg.Go2RTC + "/api/frame.jpeg?src=" + url.QueryEscape(id+"_sub") + "&width=1280&cache=0"
+	req, err := http.NewRequestWithContext(r.Context(), http.MethodGet, u, nil)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	resp, err := s.http.Do(req)
+	if err != nil {
+		http.Error(w, "snapshot unavailable", http.StatusBadGateway)
+		return
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 1024))
+		http.Error(w, strings.TrimSpace(string(body)), http.StatusBadGateway)
+		return
+	}
+
+	w.Header().Set("Content-Type", "image/jpeg")
+	w.Header().Set("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
+	w.Header().Set("Pragma", "no-cache")
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	_, _ = io.Copy(w, resp.Body)
 }
 
 func (s *Server) start(camera Camera) error {
