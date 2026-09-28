@@ -1327,3 +1327,55 @@ func (s *Server) listUsers(w http.ResponseWriter,r *http.Request){
 
 func (s *Server) userDetails(w http.ResponseWriter,id int64){
 	var username,name,role string;var active,allSec,allCam bool;if err:=s.db.QueryRow("SELECT username,display_name,is_active,all_sections,all_cameras FROM users WHERE id=?",id).Scan(&username,&name,&active,&allSec,&allCam);err!=nil{http.Error(w,"user not found",404);return};role="viewer";_=s.db.QueryRow("SELECT r.code FROM user_roles ur JOIN roles r ON r.id=ur.role_id WHERE ur.user_id=? ORDER BY r.code LIMIT 1",id).Scan(&role);scope:="selected";if allCam{scope="all_cameras"}else if allSec{scope="section"};sectionIDs:=[]int64{};cameraIDs:=[]int64{}
+	rows,_:=s.db.Query("SELECT section_id FROM user_sections WHERE user_id=?",id);if rows!=nil{for rows.Next(){var x int64;_=rows.Scan(&x);sectionIDs=append(sectionIDs,x)};rows.Close()};rows,_=s.db.Query("SELECT camera_id FROM user_cameras WHERE user_id=?",id);if rows!=nil{for rows.Next(){var x int64;_=rows.Scan(&x);cameraIDs=append(cameraIDs,x)};rows.Close()}
+	jsonResponse(w,map[string]any{"username":username,"display_name":name,"active":active,"role":role,"scope":scope,"section_ids":sectionIDs,"camera_ids":cameraIDs})
+}
+
+func (s *Server) createUser(w http.ResponseWriter,r *http.Request){var p userPayload;if err:=decodeJSON(r,&p);err!=nil{http.Error(w,err.Error(),400);return};if err:=s.saveUser(0,p);err!=nil{http.Error(w,err.Error(),400);return};jsonResponse(w,map[string]any{"status":"ok"})}
+
+func (s *Server) userAction(w http.ResponseWriter,r *http.Request){
+	u,ok:=s.requireAuth(w,r);if !ok{return};if !u.Admin{http.Error(w,"forbidden",403);return};id,err:=strconv.ParseInt(strings.TrimPrefix(r.URL.Path,"/api/users/"),10,64);if err!=nil||id<=0{http.Error(w,"invalid user id",400);return}
+	switch r.Method{case http.MethodGet:s.userDetails(w,id);case http.MethodPut:var p userPayload;if err:=decodeJSON(r,&p);err!=nil{http.Error(w,err.Error(),400);return};if err:=s.saveUser(id,p);err!=nil{http.Error(w,err.Error(),400);return};jsonResponse(w,map[string]any{"status":"ok"});case http.MethodDelete:if id==u.ID{http.Error(w,"cannot delete current user",409);return};_,err=s.db.Exec("DELETE FROM users WHERE id=?",id);if err!=nil{http.Error(w,err.Error(),500);return};jsonResponse(w,map[string]any{"status":"ok"});default:w.WriteHeader(405)}
+}
+
+func (s *Server) saveUser(id int64,p userPayload)error{
+	p.Username=strings.TrimSpace(p.Username);p.DisplayName=strings.TrimSpace(p.DisplayName);if p.Username==""||p.DisplayName==""{return fmt.Errorf("username and display name are required")};if id==0&&len(p.Password)<8{return fmt.Errorf("password must contain at least 8 characters")};if p.Role!="admin"&&p.Role!="operator"&&p.Role!="viewer"{p.Role="viewer"};if p.Scope!="all_cameras"&&p.Scope!="section"&&p.Scope!="selected"&&p.Scope!="none"{p.Scope="selected"};active:=true;if p.Active!=nil{active=*p.Active};hash:="";var err error;if p.Password!=""{hash,err=hashPassword(p.Password);if err!=nil{return err}}
+	tx,err:=s.db.Begin();if err!=nil{return err};defer tx.Rollback()
+	if id==0{if hash==""{return fmt.Errorf("password is required")};res,e:=tx.Exec("INSERT INTO users(username,password_hash,display_name,is_active,all_sections,all_cameras) VALUES(?,?,?,?,?,?)",p.Username,hash,p.DisplayName,active,p.Scope=="section",p.Scope=="all_cameras");if e!=nil{return e};id,_=res.LastInsertId()}else{if hash!=""{_,err=tx.Exec("UPDATE users SET username=?,password_hash=?,display_name=?,is_active=?,all_sections=?,all_cameras=? WHERE id=?",p.Username,hash,p.DisplayName,active,p.Scope=="section",p.Scope=="all_cameras",id)}else{_,err=tx.Exec("UPDATE users SET username=?,display_name=?,is_active=?,all_sections=?,all_cameras=? WHERE id=?",p.Username,p.DisplayName,active,p.Scope=="section",p.Scope=="all_cameras",id)};if err!=nil{return err}}
+	if _,err=tx.Exec("DELETE FROM user_roles WHERE user_id=?",id);err!=nil{return err};var roleID int64;if err=tx.QueryRow("SELECT id FROM roles WHERE code=?",p.Role).Scan(&roleID);err!=nil{return err};if _,err=tx.Exec("INSERT INTO user_roles(user_id,role_id) VALUES(?,?)",id,roleID);err!=nil{return err};if _,err=tx.Exec("DELETE FROM user_sections WHERE user_id=?",id);err!=nil{return err};if _,err=tx.Exec("DELETE FROM user_cameras WHERE user_id=?",id);err!=nil{return err}
+	if p.Scope=="section"{for _,sid:=range p.SectionIDs{if _,err=tx.Exec("INSERT IGNORE INTO user_sections(user_id,section_id) VALUES(?,?)",id,sid);err!=nil{return err}}};if p.Scope=="selected"{for _,cid:=range p.CameraIDs{if _,err=tx.Exec("INSERT IGNORE INTO user_cameras(user_id,camera_id) VALUES(?,?)",id,cid);err!=nil{return err}}};return tx.Commit()
+}
+
+
+func (s *Server) configAPI(w http.ResponseWriter,r *http.Request){
+	u,ok:=s.requireAuth(w,r);if !ok{return}
+	if !u.Admin{http.Error(w,"forbidden",403);return}
+	switch r.Method{
+	case http.MethodGet:
+		jsonResponse(w,map[string]any{"recording_dir":s.cfg.RecordingDir,"motion_post_seconds":s.cfg.MotionPostSeconds})
+	case http.MethodPut:
+		var p struct{RecordingDir string;MotionPostSeconds int}
+		if err:=decodeJSON(r,&p);err!=nil{http.Error(w,err.Error(),400);return}
+		p.RecordingDir=strings.TrimSpace(p.RecordingDir)
+		if p.RecordingDir==""{http.Error(w,"recording directory is required",400);return}
+		if p.MotionPostSeconds<0{p.MotionPostSeconds=0}
+		s.cfg.RecordingDir=p.RecordingDir;s.cfg.MotionPostSeconds=p.MotionPostSeconds
+		data,err:=json.MarshalIndent(s.cfg,"","  ");if err!=nil{http.Error(w,err.Error(),500);return}
+		if err=os.WriteFile("config.json",append(data,'\n'),0644);err!=nil{http.Error(w,err.Error(),500);return}
+		if err=os.MkdirAll(s.cfg.RecordingDir,0755);err!=nil{http.Error(w,err.Error(),500);return}
+		jsonResponse(w,map[string]any{"status":"ok","recording_dir":s.cfg.RecordingDir,"motion_post_seconds":s.cfg.MotionPostSeconds})
+	default:w.WriteHeader(405)
+	}
+}
+
+func (s *Server) cameraWebRTC(w http.ResponseWriter,r *http.Request,id string){
+	camera,ok:=s.findCamera(id);if !ok{http.Error(w,"camera not found",404);return}
+	body,err:=io.ReadAll(io.LimitReader(r.Body,1024*1024));if err!=nil{http.Error(w,err.Error(),400);return}
+	u:=s.cfg.Go2RTC+"/api/webrtc?src="+url.QueryEscape(id+"_sub")
+	req,err:=http.NewRequestWithContext(r.Context(),http.MethodPost,u,strings.NewReader(string(body)));if err!=nil{http.Error(w,err.Error(),500);return}
+	req.Header.Set("Content-Type","application/sdp")
+	resp,err:=s.http.Do(req);if err!=nil{http.Error(w,err.Error(),502);return};defer resp.Body.Close()
+	if resp.StatusCode<200||resp.StatusCode>=300{data,_:=io.ReadAll(io.LimitReader(resp.Body,4096));http.Error(w,strings.TrimSpace(string(data)),resp.StatusCode);return}
+	w.Header().Set("Content-Type",resp.Header.Get("Content-Type"));if w.Header().Get("Content-Type")==""{w.Header().Set("Content-Type","application/sdp")};w.WriteHeader(resp.StatusCode);_,_=io.Copy(w,resp.Body)
+	_ = camera
+}
