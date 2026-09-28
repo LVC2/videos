@@ -113,7 +113,8 @@ func main() {
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/health", s.health)
-	mux.HandleFunc("/api/sections", s.listSections)
+	mux.HandleFunc("/api/sections", s.sectionsAPI)
+	mux.HandleFunc("/api/sections/", s.sectionAction)
 	mux.HandleFunc("/api/cameras", s.camerasAPI)
 	mux.HandleFunc("/api/cameras/", s.cameraAction)
 	mux.Handle("/hls/", http.StripPrefix("/hls/", http.FileServer(http.Dir(cfg.MediaDir))))
@@ -234,6 +235,11 @@ type cameraPayload struct {
 	SortOrder *int    `json:"sort_order"`
 }
 
+type sectionPayload struct {
+	Name      string `json:"name"`
+	SortOrder *int   `json:"sort_order"`
+}
+
 func (s *Server) listSections(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		w.WriteHeader(http.StatusMethodNotAllowed)
@@ -248,9 +254,9 @@ func (s *Server) listSections(w http.ResponseWriter, r *http.Request) {
 	defer rows.Close()
 
 	type item struct {
-		ID int64 `json:"id"`
-		Name string `json:"name"`
-		SortOrder int `json:"sort_order"`
+		ID        int64  `json:"id"`
+		Name      string `json:"name"`
+		SortOrder int    `json:"sort_order"`
 	}
 
 	out := make([]item, 0)
@@ -267,6 +273,97 @@ func (s *Server) listSections(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	jsonResponse(w, out)
+}
+
+func (s *Server) sectionsAPI(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case http.MethodGet:
+		s.listSections(w, r)
+	case http.MethodPost:
+		s.createSection(w, r)
+	default:
+		w.WriteHeader(http.StatusMethodNotAllowed)
+	}
+}
+
+func (s *Server) createSection(w http.ResponseWriter, r *http.Request) {
+	var p sectionPayload
+	if err := decodeJSON(r, &p); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	p.Name = strings.TrimSpace(p.Name)
+	if p.Name == "" {
+		http.Error(w, "name is required", http.StatusBadRequest)
+		return
+	}
+	sortOrder := 0
+	if p.SortOrder != nil {
+		sortOrder = *p.SortOrder
+	}
+
+	if _, err := s.db.Exec("INSERT INTO sections (name, sort_order, is_active) VALUES (?, ?, 1)", p.Name, sortOrder); err != nil {
+		http.Error(w, err.Error(), http.StatusConflict)
+		return
+	}
+	jsonResponse(w, map[string]any{"status": "ok"})
+}
+
+func (s *Server) sectionAction(w http.ResponseWriter, r *http.Request) {
+	idText := strings.TrimPrefix(r.URL.Path, "/api/sections/")
+	if idText == "" || strings.Contains(idText, "/") {
+		http.Error(w, "invalid section id", http.StatusBadRequest)
+		return
+	}
+
+	var id int64
+	if _, err := fmt.Sscanf(idText, "%d", &id); err != nil || id <= 0 {
+		http.Error(w, "invalid section id", http.StatusBadRequest)
+		return
+	}
+
+	switch r.Method {
+	case http.MethodPut:
+		var p sectionPayload
+		if err := decodeJSON(r, &p); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		p.Name = strings.TrimSpace(p.Name)
+		if p.Name == "" {
+			http.Error(w, "name is required", http.StatusBadRequest)
+			return
+		}
+		sortOrder := 0
+		if p.SortOrder != nil {
+			sortOrder = *p.SortOrder
+		}
+		result, err := s.db.Exec("UPDATE sections SET name=?, sort_order=? WHERE id=? AND is_active=1", p.Name, sortOrder, id)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusConflict)
+			return
+		}
+		if n, _ := result.RowsAffected(); n == 0 {
+			http.Error(w, "section not found", http.StatusNotFound)
+			return
+		}
+		jsonResponse(w, map[string]any{"status": "ok"})
+
+	case http.MethodDelete:
+		result, err := s.db.Exec("DELETE FROM sections WHERE id=? AND is_active=1", id)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusConflict)
+			return
+		}
+		if n, _ := result.RowsAffected(); n == 0 {
+			http.Error(w, "section not found", http.StatusNotFound)
+			return
+		}
+		jsonResponse(w, map[string]any{"status": "ok"})
+
+	default:
+		w.WriteHeader(http.StatusMethodNotAllowed)
+	}
 }
 
 func (s *Server) camerasAPI(w http.ResponseWriter, r *http.Request) {
