@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -224,9 +225,7 @@ func (s *Server) health(w http.ResponseWriter, r *http.Request) {
 
 
 type cameraPayload struct {
-	Slug      string `json:"slug"`
-	Name      string `json:"name"`
-	RTSPURL   string `json:"rtsp_url"`
+	IP        string `json:"ip"`
 	Username  string `json:"username"`
 	Password  string `json:"password"`
 	Enabled   *bool  `json:"enabled"`
@@ -383,12 +382,10 @@ func (s *Server) createCamera(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	p.Slug = strings.TrimSpace(p.Slug)
-	p.Name = strings.TrimSpace(p.Name)
-	p.RTSPURL = strings.TrimSpace(p.RTSPURL)
+	p.IP = strings.TrimSpace(p.IP)
 	p.Username = strings.TrimSpace(p.Username)
-	if p.Slug == "" || p.Name == "" || p.RTSPURL == "" {
-		http.Error(w, "slug, name and rtsp_url are required", http.StatusBadRequest)
+	if net.ParseIP(p.IP) == nil || p.Username == "" || p.Password == "" {
+		http.Error(w, "ip, username and password are required", http.StatusBadRequest)
 		return
 	}
 
@@ -398,9 +395,13 @@ func (s *Server) createCamera(w http.ResponseWriter, r *http.Request) {
 		sectionID = *p.SectionID
 	}
 
+	slug := strings.ReplaceAll(p.IP, ".", "-")
+	name := "Камера " + p.IP
+	rtspURL := "rtsp://" + p.IP + ":554/Streaming/Channels/101"
+
 	_, err := s.db.Exec(
 		"INSERT INTO cameras (section_id, slug, name, rtsp_url, rtsp_username, rtsp_password, enabled, autostart, sort_order) VALUES (?, ?, ?, ?, NULLIF(?, ''), NULLIF(?, ''), ?, ?, ?)",
-		sectionID, p.Slug, p.Name, p.RTSPURL, p.Username, p.Password, enabled, autostart, sortOrder,
+		sectionID, slug, name, rtspURL, p.Username, p.Password, enabled, autostart, sortOrder,
 	)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusConflict)
@@ -424,7 +425,12 @@ func (s *Server) cameraDetails(w http.ResponseWriter, id string) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	jsonResponse(w, map[string]any{"id": id, "rtsp_url": rtspURL, "username": username})
+	u, err := url.Parse(rtspURL)
+	if err != nil || u.Hostname() == "" {
+		http.Error(w, "invalid camera RTSP URL", http.StatusInternalServerError)
+		return
+	}
+	jsonResponse(w, map[string]any{"id": id, "ip": u.Hostname(), "username": username})
 }
 
 func (s *Server) updateCamera(w http.ResponseWriter, r *http.Request, id string) {
@@ -433,11 +439,10 @@ func (s *Server) updateCamera(w http.ResponseWriter, r *http.Request, id string)
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	p.Name = strings.TrimSpace(p.Name)
-	p.RTSPURL = strings.TrimSpace(p.RTSPURL)
+	p.IP = strings.TrimSpace(p.IP)
 	p.Username = strings.TrimSpace(p.Username)
-	if p.Name == "" || p.RTSPURL == "" {
-		http.Error(w, "name and rtsp_url are required", http.StatusBadRequest)
+	if net.ParseIP(p.IP) == nil || p.Username == "" {
+		http.Error(w, "ip and username are required", http.StatusBadRequest)
 		return
 	}
 	if _, ok := s.findCamera(id); !ok {
@@ -451,9 +456,12 @@ func (s *Server) updateCamera(w http.ResponseWriter, r *http.Request, id string)
 		sectionID = *p.SectionID
 	}
 
+	rtspURL := "rtsp://" + p.IP + ":554/Streaming/Channels/101"
+	name := "Камера " + p.IP
+
 	_, err := s.db.Exec(
 		"UPDATE cameras SET section_id=?, name=?, rtsp_url=?, rtsp_username=NULLIF(?, ''), rtsp_password=CASE WHEN ? <> '' THEN ? ELSE rtsp_password END, enabled=?, autostart=?, sort_order=? WHERE slug=?",
-		sectionID, p.Name, p.RTSPURL, p.Username, p.Password, p.Password, enabled, autostart, sortOrder, id,
+		sectionID, name, rtspURL, p.Username, p.Password, p.Password, enabled, autostart, sortOrder, id,
 	)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusConflict)
