@@ -1,6 +1,7 @@
 {
   "listen": "127.0.0.1:8090",
-  "ffmpeg": "ffmpeg",
+  "go2rtc": "http://127.0.0.1:1984",
   "media_dir": "./runtime",
+  "motion_post_seconds": 10,
   "db_dsn": ""
 }
