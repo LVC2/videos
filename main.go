@@ -451,6 +451,8 @@ func (s *Server) listCameras(w http.ResponseWriter, r *http.Request) {
 			Enabled:   c.Enabled,
 			Autostart: c.Autostart,
 			Running:   ok && st.Cmd != nil && st.Cmd.Process != nil,
+			SectionName: c.SectionName,
+			SortOrder: c.SortOrder,
 		}
 
 		if c.SectionID.Valid {
