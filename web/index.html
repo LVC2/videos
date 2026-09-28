@@ -5,8 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Video Core</title>
   <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/hls.js@1/dist/hls.min.js"></script>
-  <style>
+    <style>
     :root{
       font-family:Inter,Arial,sans-serif;
       color:#e7eaf0;
@@ -129,7 +128,7 @@
       <div class="head">
         <span class="title">{{ camera.name }}</span>
         <span class="state" :class="camera.running?'online':'off'">
-          {{ camera.running ? 'RUNNING' : 'STOPPED' }}
+          {{ camera.recording ? 'REC' : (camera.running ? 'LIVE' : 'STOPPED') }}
         </span>
       </div>
 
@@ -145,7 +144,7 @@
       </div>
 
       <div class="foot">
-        <span>{{ camera.id }}</span>
+        <span>{{ camera.id }} · {{ camera.recording ? 'идёт запись' : 'ожидание движения' }}</span>
         <button class="btn" @click="toggle(camera)">
           {{ camera.running ? 'Стоп' : 'Старт' }}
         </button>
@@ -252,6 +251,7 @@ createApp({
       players:{},
       modal:false,
       editing:false,
+      editingId:'',
       form:this.emptyForm(),
       sectionModal:false,
       sectionEditing:false,
@@ -336,6 +336,7 @@ createApp({
         this.error='';
         const d=await this.api('/api/cameras/'+encodeURIComponent(c.id)+'/details');
         this.editing=true;
+        this.editingId=c.id;
         this.form={
           ip:d.ip||'',
           username:d.username||'',
@@ -353,7 +354,7 @@ createApp({
       try{
         const body={...this.form,section_id:this.form.section_id?Number(this.form.section_id):null};
         if(this.editing){
-          await this.api('/api/cameras/'+encodeURIComponent(this.form.slug)+'/update',{
+          await this.api('/api/cameras/'+encodeURIComponent(this.editingId)+'/update',{
             method:'PUT',
             headers:{'Content-Type':'application/json'},
             body:JSON.stringify(body)
@@ -393,33 +394,52 @@ createApp({
       }
     },
 
-    attach(){
-      this.cameras
-        .filter(c=>c.running)
-        .forEach(c=>{
-          const el=document.getElementById('video-'+c.id);
-          if(!el) return;
-
-          const src=`/hls/${c.id}/index.m3u8`;
-
-          if(Hls.isSupported()){
-            if(this.players[c.id]){
-              this.players[c.id].destroy();
+    async attach(){
+      for(const c of this.cameras.filter(c=>c.running)){
+        const el=document.getElementById('video-'+c.id);
+        if(!el) continue;
+        if(this.players[c.id]){
+          this.players[c.id].close();
+          delete this.players[c.id];
+        }
+        try{
+          const pc=new RTCPeerConnection();
+          pc.addTransceiver('video',{direction:'recvonly'});
+          pc.addTransceiver('audio',{direction:'recvonly'});
+          const stream=new MediaStream();
+          el.srcObject=stream;
+          pc.ontrack=e=>{
+            if(e.streams && e.streams[0]){
+              e.streams[0].getTracks().forEach(t=>{
+                if(!stream.getTracks().some(x=>x.id===t.id)) stream.addTrack(t);
+              });
+            }else{
+              stream.addTrack(e.track);
             }
+            el.play().catch(()=>{});
+          };
 
-            const h=new Hls({
-              lowLatencyMode:true,
-              maxBufferLength:4
-            });
+          const offer=await pc.createOffer();
+          await pc.setLocalDescription(offer);
 
-            h.loadSource(src);
-            h.attachMedia(el);
-            this.players[c.id]=h;
-          }else if(el.canPlayType('application/vnd.apple.mpegurl')){
-            el.src=src;
-          }
-        })
-    }
+          const host=window.location.hostname;
+          const scheme=window.location.protocol==='https:'?'https:':'http:';
+          const whep=scheme+'//'+host+':1984/api/webrtc?src='+encodeURIComponent(c.sub_stream);
+
+          const response=await fetch(whep,{
+            method:'POST',
+            headers:{'Content-Type':'application/sdp'},
+            body:offer.sdp
+          });
+          if(!response.ok) throw new Error('WebRTC '+response.status);
+          const answer=await response.text();
+          await pc.setRemoteDescription({type:'answer',sdp:answer});
+          this.players[c.id]=pc;
+        }catch(e){
+          this.error='Камера '+c.name+': '+e.message;
+        }
+      }
+    }    }
   },
 
   mounted(){
