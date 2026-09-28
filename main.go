@@ -30,6 +30,7 @@ import (
 )
 
 type Camera struct {
+	DBID        int64
 	ID          string
 	Name        string
 	IP          string
@@ -175,7 +176,7 @@ func loadConfig(path string) (Config, error) {
 }
 
 func loadCameras(db *sql.DB) ([]Camera, error) {
-	const query = `SELECT c.slug, c.name, c.rtsp_url,
+	const query = `SELECT c.id, c.slug, c.name, c.rtsp_url,
 		COALESCE(c.rtsp_username, ''), COALESCE(c.rtsp_password, ''),
 		c.enabled, c.autostart, c.section_id, COALESCE(s.name, ''), c.sort_order
 		FROM cameras c
@@ -190,11 +191,12 @@ func loadCameras(db *sql.DB) ([]Camera, error) {
 
 	var cameras []Camera
 	for rows.Next() {
+		var dbID int64
 		var slug, name, rtspURL, username, password, sectionName string
 		var enabled, autostart bool
 		var sectionID sql.NullInt64
 		var sortOrder int
-		if err := rows.Scan(&slug, &name, &rtspURL, &username, &password, &enabled, &autostart, &sectionID, &sectionName, &sortOrder); err != nil {
+		if err := rows.Scan(&dbID, &slug, &name, &rtspURL, &username, &password, &enabled, &autostart, &sectionID, &sectionName, &sortOrder); err != nil {
 			return nil, err
 		}
 
@@ -208,6 +210,7 @@ func loadCameras(db *sql.DB) ([]Camera, error) {
 		subURL := buildRTSPURL("rtsp://"+u.Host+"/Streaming/Channels/102", username, password)
 
 		cameras = append(cameras, Camera{
+			DBID:        dbID,
 			ID:          slug,
 			Name:        name,
 			IP:          ip,
@@ -539,6 +542,7 @@ func (s *Server) reloadCameras() error {
 func (s *Server) listCameras(w http.ResponseWriter, r *http.Request) {
 	user, ok := s.requireAuth(w, r); if !ok { return }
 	type item struct {
+		DBID int64 `json:"db_id"`
 		ID string `json:"id"`
 		Name string `json:"name"`
 		Enabled bool `json:"enabled"`
@@ -559,7 +563,7 @@ func (s *Server) listCameras(w http.ResponseWriter, r *http.Request) {
 		if !s.userCanViewCamera(user, c.ID) { continue }
 		rt := s.runtimes[c.ID]
 		it := item{
-			ID: c.ID, Name: c.Name, Enabled: c.Enabled, Autostart: c.Autostart,
+			DBID: c.DBID, ID: c.ID, Name: c.Name, Enabled: c.Enabled, Autostart: c.Autostart,
 			Running: rt != nil, SectionName: c.SectionName, SortOrder: c.SortOrder,
 			MainStream: c.ID + "_main", SubStream: c.ID + "_sub",
 		}
