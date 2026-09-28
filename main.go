@@ -10,6 +10,8 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"mime"
+	"mime/multipart"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -720,24 +722,57 @@ func (s *Server) readMotionStream(ctx context.Context, camera Camera) error {
 		return fmt.Errorf("HTTP %s: %s", resp.Status, strings.TrimSpace(string(body)))
 	}
 
-	decoder := xml.NewDecoder(resp.Body)
-	for {
-		var event hikEvent
-		if err := decoder.Decode(&event); err != nil {
-			if ctx.Err() != nil {
+	if mediaType, params, err := mime.ParseMediaType(resp.Header.Get("Content-Type")); err == nil && strings.HasPrefix(mediaType, "multipart/") {
+		boundary := params["boundary"]
+		if boundary == "" {
+			return fmt.Errorf("multipart response has no boundary")
+		}
+		reader := multipart.NewReader(resp.Body, boundary)
+		for {
+			part, err := reader.NextPart()
+			if err == io.EOF {
 				return nil
 			}
-			return err
+			if err != nil {
+				return err
+			}
+			data, err := io.ReadAll(part)
+			part.Close()
+			if err != nil {
+				return err
+			}
+			s.handleMotionXML(camera.ID, data)
 		}
-		if event.EventType != "VMD" {
-			continue
-		}
-		switch strings.ToLower(event.EventState) {
-		case "active":
-			s.motionActive(camera.ID)
-		case "inactive":
-			s.motionInactive(camera.ID)
-		}
+	}
+
+	data, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return err
+	}
+	s.handleMotionXML(camera.ID, data)
+	return nil
+}
+
+func (s *Server) handleMotionXML(id string, data []byte) {
+	start := strings.Index(string(data), "<EventNotificationAlert")
+	end := strings.LastIndex(string(data), "</EventNotificationAlert>")
+	if start < 0 || end < 0 {
+		return
+	}
+	data = data[start : end+len("</EventNotificationAlert>")]
+
+	var event hikEvent
+	if err := xml.Unmarshal(data, &event); err != nil {
+		return
+	}
+	if event.EventType != "VMD" {
+		return
+	}
+	switch strings.ToLower(event.EventState) {
+	case "active":
+		s.motionActive(id)
+	case "inactive":
+		s.motionInactive(id)
 	}
 }
 
