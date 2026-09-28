@@ -180,7 +180,7 @@
   <main v-if="tab==='cameras'" class="manage">
     <section class="panel">
       <div class="panel-head">
-        <div><strong>Камеры</strong><div class="muted">Добавление и настройка RTSP-источников</div></div>
+        <div><strong>Камеры</strong><div class="muted">Подключение: IP-адрес, логин и пароль</div></div>
         <button class="btn primary" @click="openNew">+ Добавить камеру</button>
       </div>
       <table v-if="cameras.length">
@@ -221,11 +221,9 @@
       <div class="modal-head"><strong>{{editing ? 'Редактирование камеры' : 'Новая камера'}}</strong><button class="btn" @click="modal=false">Закрыть</button></div>
       <form @submit.prevent="save">
         <div class="form">
-          <div class="field"><label>Slug / ID</label><input v-model.trim="form.slug" :disabled="editing" required></div>
-          <div class="field"><label>Название</label><input v-model.trim="form.name" required></div>
-          <div class="field full"><label>RTSP URL</label><input v-model.trim="form.rtsp_url" placeholder="rtsp://192.168.1.10/..." required></div>
-          <div class="field"><label>RTSP пользователь</label><input v-model.trim="form.username"></div>
-          <div class="field"><label>RTSP пароль</label><input v-model="form.password" type="password" autocomplete="new-password"></div>
+          <div class="field full"><label>IP-адрес камеры</label><input v-model.trim="form.ip" placeholder="10.120.10.10" inputmode="decimal" required></div>
+          <div class="field"><label>Логин</label><input v-model.trim="form.username" required></div>
+          <div class="field"><label>Пароль</label><input v-model="form.password" type="password" autocomplete="new-password" :required="!editing"></div>
           <div class="field"><label>Раздел</label><select v-model="form.section_id"><option value="">Без раздела</option><option v-for="s in sections" :value="String(s.id)">{{s.name}}</option></select></div>
           <div class="field"><label>Порядок</label><input v-model.number="form.sort_order" type="number" min="0"></div>
           <div class="checks">
@@ -269,7 +267,7 @@ createApp({
     },
 
     emptyForm(){
-      return {slug:'',name:'',rtsp_url:'',username:'',password:'',enabled:true,autostart:false,section_id:'',sort_order:0};
+      return {ip:'',username:'',password:'',enabled:true,autostart:true,section_id:'',sort_order:0};
     },
 
     openSectionNew(){
@@ -339,9 +337,7 @@ createApp({
         const d=await this.api('/api/cameras/'+encodeURIComponent(c.id)+'/details');
         this.editing=true;
         this.form={
-          slug:c.id,
-          name:c.name,
-          rtsp_url:d.rtsp_url||'',
+          ip:d.ip||'',
           username:d.username||'',
           password:'',
           enabled:c.enabled,
