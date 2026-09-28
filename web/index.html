@@ -82,6 +82,7 @@ input,select{width:100%;background:#0b0f14;border:1px solid #303a47;color:var(--
 .modal-foot{padding:13px 16px;border-top:1px solid var(--line);display:flex;justify-content:flex-end;gap:8px}
 .auth{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px}.auth-card{width:min(420px,100%);background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:24px}.auth-card h1{margin-top:0}.auth-card .field{margin-bottom:13px}.auth-card .btn{width:100%}
 table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:11px 12px;border-bottom:1px solid var(--line);font-size:12px}th{color:var(--muted);font-weight:600}.row-actions{display:flex;gap:6px;justify-content:flex-end}
+.scanner{padding:14px}.scanner-form{display:flex;gap:8px;align-items:end;flex-wrap:wrap}.scanner-form .field{min-width:230px}.scan-results{margin-top:12px;border:1px solid var(--line);border-radius:9px;overflow:hidden}.scan-item{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 12px;border-bottom:1px solid var(--line)}.scan-item:last-child{border-bottom:0}.port-badges{display:flex;gap:6px;flex-wrap:wrap}.port-badge{padding:4px 7px;border-radius:6px;background:#18222d;color:#b8c5d3;font-size:10px}.stream-ok{color:var(--good)}.stream-error{color:var(--bad)}
 @media(max-width:760px){
   .top{align-items:flex-start;padding:10px 12px;flex-wrap:wrap}.brand-wrap{flex:1 1 150px}
   .actions{width:100%;justify-content:flex-start;overflow-x:auto;flex-wrap:nowrap;padding-bottom:2px}
@@ -147,14 +148,14 @@ table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:11px 12p
             <img :src="snapshotUrl(camera)" :alt="camera.name" loading="eager" @error="snapshotErrors[camera.id]=true">
             <div v-if="snapshotErrors[camera.id]" class="snapshot-placeholder">Кадр временно недоступен</div>
             <div class="snapshot-top">
-              <span class="badge"><span class="dot" :class="{off:!camera.running}"></span>{{camera.running?'Камера онлайн':'Камера остановлена'}}</span>
+              <span class="badge"><span class="dot" :class="{off:!camera.stream_ok}"></span>{{camera.stream_ok?'Камера онлайн':(camera.running?'Ошибка видеопотока':'Камера остановлена')}}</span>
               <span v-if="camera.recording" class="badge">● REC</span>
             </div>
             <div class="snapshot-bottom"><span class="badge">{{snapshotTickLabel}}</span></div>
           </div>
           <div class="card-body">
             <div class="card-title-row"><div class="title">{{camera.name}}</div><span class="muted">{{camera.section_name || 'Без раздела'}}</span></div>
-            <div class="card-meta"><span>Поток 102 · кадр JPEG</span><span>{{camera.running?'Доступен':'Не запущен'}}</span></div>
+            <div class="card-meta"><span>Поток 102 · JPEG</span><span>{{camera.last_frame?'Кадр: '+new Date(camera.last_frame).toLocaleTimeString():(camera.stream_error?'Нет кадра':'Проверка…')}}</span></div><div v-if="camera.stream_error" class="error" style="padding:8px 0 0">{{camera.stream_error}}</div>
             <div v-if="currentUser.admin || currentUser.can_control" class="card-actions">
               <button class="btn" @click="toggle(camera)">{{camera.running?'Остановить':'Запустить'}}</button>
             </div>
@@ -166,9 +167,9 @@ table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:11px 12p
 
     <main v-if="tab==='cameras' && currentUser.admin" class="manage">
       <section class="panel">
-        <div class="panel-head"><div><strong>Камеры</strong><div class="muted">101 — запись, 102 — просмотр</div></div><button class="btn primary" @click="openNew">+ Добавить камеру</button></div>
+        <div class="panel-head"><div><strong>Камеры</strong><div class="muted">101 — запись, 102 — просмотр</div></div><div class="actions"><button class="btn" @click="scanOpen=true">Сканировать сеть</button><button class="btn primary" @click="openNew">+ Добавить камеру</button></div></div>
         <table v-if="cameras.length"><thead><tr><th>Камера</th><th>Раздел</th><th>Статус</th><th>Автозапуск</th><th></th></tr></thead><tbody>
-          <tr v-for="camera in cameras" :key="camera.id"><td><strong>{{camera.name}}</strong><div class="muted">{{camera.id}}</div></td><td>{{camera.section_name||'—'}}</td><td>{{camera.running?'Работает':'Остановлена'}}</td><td>{{camera.autostart?'Да':'Нет'}}</td><td class="row-actions"><button class="btn" @click="toggle(camera)">{{camera.running?'Стоп':'Старт'}}</button><button class="btn" @click="openEdit(camera)">Изменить</button><button class="btn danger" @click="remove(camera)">Удалить</button></td></tr>
+          <tr v-for="camera in cameras" :key="camera.id"><td><strong>{{camera.name}}</strong><div class="muted">{{camera.id}}</div></td><td>{{camera.section_name||'—'}}</td><td><span :class="camera.stream_ok?'stream-ok':'stream-error'">{{camera.stream_ok?'Поток работает':(camera.running?'Нет изображения':'Остановлена')}}</span><div v-if="camera.stream_error" class="muted">{{camera.stream_error}}</div></td><td>{{camera.autostart?'Да':'Нет'}}</td><td class="row-actions"><button class="btn" @click="toggle(camera)">{{camera.running?'Стоп':'Старт'}}</button><button class="btn" @click="openEdit(camera)">Изменить</button><button class="btn danger" @click="remove(camera)">Удалить</button></td></tr>
         </tbody></table><div v-else class="empty-list">Камеры ещё не добавлены.</div>
       </section>
     </main>
@@ -189,6 +190,7 @@ table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:11px 12p
       <div class="modal-foot"><button class="btn primary" @click="saveConfig">Сохранить настройки</button></div>
     </section></main>
 
+    <div v-if="scanOpen" class="modal-backdrop" @click.self="scanOpen=false"><div class="modal"><div class="modal-head"><div><strong>Сканирование сети</strong><div class="muted">Проверяем TCP 554, 80 и 443. Только приватные IPv4 /24.</div></div><button class="btn" @click="scanOpen=false">Закрыть</button></div><div class="scanner"><div class="scanner-form"><div class="field"><label>Сеть</label><input v-model.trim="scanCIDR" placeholder="10.120.10.0/24"></div><button class="btn primary" :disabled="scanBusy" @click="scanNetwork">{{scanBusy?'Сканирование…':'Начать сканирование'}}</button></div><div v-if="scanResults.length" class="scan-results"><div v-for="r in scanResults" :key="r.ip" class="scan-item"><div><strong>{{r.ip}}</strong><div class="muted">{{r.server||'Устройство отвечает по сети'}}</div></div><div class="port-badges"><span v-if="r.rtsp" class="port-badge">RTSP 554</span><span v-if="r.http" class="port-badge">HTTP 80</span><span v-if="r.https" class="port-badge">HTTPS 443</span><button class="btn" @click="form.ip=r.ip;form.username='admin';form.password='';form.enabled=true;form.autostart=true;form.section_id='';form.sort_order=0;editing=false;editingId='';scanOpen=false;modal=true">Добавить</button></div></div></div><div v-else-if="!scanBusy" class="empty-list">Ничего не найдено.</div></div></div></div>
     <div v-if="modal" class="modal-backdrop" @click.self="modal=false"><div class="modal"><div class="modal-head"><strong>{{editing?'Редактирование камеры':'Новая камера'}}</strong><button class="btn" @click="modal=false">Закрыть</button></div><form @submit.prevent="saveCamera"><div class="form"><div class="field full"><label>IP-адрес</label><input v-model.trim="form.ip" required></div><div class="field"><label>Логин</label><input v-model.trim="form.username" required></div><div class="field"><label>Пароль</label><input v-model="form.password" type="password" :required="!editing"></div><div class="field"><label>Раздел</label><select v-model="form.section_id"><option value="">Без раздела</option><option v-for="s in sections" :value="String(s.id)">{{s.name}}</option></select></div><div class="field"><label>Порядок</label><input v-model.number="form.sort_order" type="number" min="0"></div><div class="checks"><label><input v-model="form.enabled" type="checkbox"> Камера включена</label><label><input v-model="form.autostart" type="checkbox"> Автозапуск</label></div></div><div class="modal-foot"><button type="button" class="btn" @click="modal=false">Отмена</button><button class="btn primary" type="submit">{{editing?'Сохранить':'Добавить'}}</button></div></form></div></div>
 
     <div v-if="sectionModal" class="modal-backdrop" @click.self="sectionModal=false"><div class="modal"><div class="modal-head"><strong>{{sectionEditing?'Редактирование раздела':'Новый раздел'}}</strong><button class="btn" @click="sectionModal=false">Закрыть</button></div><form @submit.prevent="saveSection"><div class="form"><div class="field full"><label>Название</label><input v-model.trim="sectionForm.name" required></div><div class="field"><label>Порядок</label><input v-model.number="sectionForm.sort_order" type="number" min="0"></div></div><div class="modal-foot"><button type="button" class="btn" @click="sectionModal=false">Отмена</button><button class="btn primary" type="submit">Сохранить</button></div></form></div></div>
@@ -202,7 +204,7 @@ table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:11px 12p
 <script>
 const {createApp}=Vue;
 createApp({
-data(){return{ready:false,authenticated:false,setupRequired:false,currentUser:null,login:{username:'',password:'',displayName:''},error:'',tab:'live',cameras:[],allCameras:[],sections:[],users:[],snapshotTick:0,snapshotErrors:{},modal:false,editing:false,editingId:'',form:{ip:'',username:'',password:'',enabled:true,autostart:true,section_id:'',sort_order:0},sectionModal:false,sectionEditing:false,sectionForm:{id:null,name:'',sort_order:0},userModal:false,userEditing:false,userEditingId:0,userForm:{username:'',displayName:'',password:'',role:'viewer',scope:'selected',sectionIDs:[],cameraIDs:[],active:true},config:{recording_dir:'',motion_post_seconds:10}}},
+data(){return{ready:false,authenticated:false,setupRequired:false,currentUser:null,login:{username:'',password:'',displayName:''},error:'',tab:'live',cameras:[],allCameras:[],sections:[],users:[],snapshotTick:0,snapshotErrors:{},scanOpen:false,scanCIDR:'10.120.10.0/24',scanBusy:false,scanResults:[],modal:false,editing:false,editingId:'',form:{ip:'',username:'',password:'',enabled:true,autostart:true,section_id:'',sort_order:0},sectionModal:false,sectionEditing:false,sectionForm:{id:null,name:'',sort_order:0},userModal:false,userEditing:false,userEditingId:0,userForm:{username:'',displayName:'',password:'',role:'viewer',scope:'selected',sectionIDs:[],cameraIDs:[],active:true},config:{recording_dir:'',motion_post_seconds:10}}},
 methods:{
 async api(url,opt){const r=await fetch(url,opt||{});if(!r.ok){let t=await r.text();throw new Error(t||('HTTP '+r.status));}return r.json()},
 async checkAuth(){try{const d=await this.api('/api/auth/status');this.setupRequired=!!d.setup_required;this.authenticated=!!d.authenticated;this.currentUser=d.user;if(this.authenticated)await this.reload();}catch(e){this.error=e.message}finally{this.ready=true}},
@@ -219,6 +221,8 @@ async openEdit(c){const d=await this.api('/api/cameras/'+encodeURIComponent(c.id
 async saveCamera(){try{const body={...this.form,section_id:this.form.section_id?Number(this.form.section_id):null};await this.api(this.editing?'/api/cameras/'+encodeURIComponent(this.editingId)+'/update':'/api/cameras',{method:this.editing?'PUT':'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});this.modal=false;await this.reload();this.tab='cameras'}catch(e){this.error=e.message}},
 async remove(c){if(!confirm('Удалить камеру «'+c.name+'»?'))return;try{await this.api('/api/cameras/'+encodeURIComponent(c.id)+'/delete',{method:'DELETE'});await this.reload()}catch(e){this.error=e.message}},
 async toggle(c){try{await this.api('/api/cameras/'+encodeURIComponent(c.id)+'/'+(c.running?'stop':'start'),{method:'POST'});await new Promise(r=>setTimeout(r,350));await this.reload()}catch(e){this.error=e.message}},
+scanOpenNetwork(){this.scanResults=[];this.scanOpen=true},
+async scanNetwork(){try{this.scanBusy=true;this.error='';this.scanResults=await this.api('/api/scan?cidr='+encodeURIComponent(this.scanCIDR));}catch(e){this.error=e.message}finally{this.scanBusy=false}},
 snapshotUrl(c){return '/api/cameras/'+encodeURIComponent(c.id)+'/snapshot?t='+this.snapshotTick},
 refreshSnapshots(){this.snapshotErrors={};this.snapshotTick=Date.now()},
 openSectionNew(){this.sectionEditing=false;this.sectionForm={id:null,name:'',sort_order:0};this.sectionModal=true},
