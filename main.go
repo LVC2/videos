@@ -611,7 +611,11 @@ func (s *Server) scanAPI(w http.ResponseWriter, r *http.Request) {
 	cidr := strings.TrimSpace(r.URL.Query().Get("cidr"))
 	if cidr == "" { cidr = "10.120.10.0/24" }
 	ip, network, err := net.ParseCIDR(cidr)
-	if err != nil || ip.To4() == nil || network.Mask.Size() != 24 {
+	ones, bits := 0, 0
+	if network != nil {
+		ones, bits = network.Mask.Size()
+	}
+	if err != nil || ip.To4() == nil || ones != 24 || bits != 32 {
 		http.Error(w, "cidr must be an IPv4 /24 network", http.StatusBadRequest)
 		return
 	}
