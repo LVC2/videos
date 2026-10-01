@@ -51,7 +51,9 @@ type Config struct {
 	Listen            string `json:"listen"`
 	Go2RTC            string `json:"go2rtc"`
 	MediaDir          string `json:"media_dir"`
-	RecordingDir      string `json:"recording_dir"`
+	ArchiveDir        string `json:"archive_dir"`
+	ArchiveMount      string `json:"archive_mount"`
+	SegmentSeconds    int    `json:"segment_seconds"`
 	MotionPostSeconds int    `json:"motion_post_seconds"`
 	DBDSN             string `json:"db_dsn"`
 }
@@ -92,8 +94,14 @@ func main() {
 	if cfg.MediaDir == "" {
 		cfg.MediaDir = "./runtime"
 	}
-	if cfg.RecordingDir == "" {
-		cfg.RecordingDir = cfg.MediaDir
+	if cfg.ArchiveDir == "" {
+		cfg.ArchiveDir = "/mnt/truenas/recordings"
+	}
+	if cfg.ArchiveMount == "" {
+		cfg.ArchiveMount = "/mnt/truenas"
+	}
+	if cfg.SegmentSeconds <= 0 {
+		cfg.SegmentSeconds = 300
 	}
 	if cfg.MotionPostSeconds <= 0 {
 		cfg.MotionPostSeconds = 10
@@ -1102,6 +1110,9 @@ func (s *Server) startRecording(id string) error {
 	if !ok {
 		return fmt.Errorf("camera not found")
 	}
+	if err := s.archiveReady(); err != nil {
+		return err
+	}
 
 	ctx, cancel := context.WithCancel(context.Background())
 	s.mu.Lock()
@@ -1120,33 +1131,12 @@ func (s *Server) startRecording(id string) error {
 	rt.RecordCancel = cancel
 	s.mu.Unlock()
 
-	dir := filepath.Join(s.cfg.RecordingDir, id, time.Now().Format("2006-01-02"))
-	if err := os.MkdirAll(dir, 0755); err != nil {
-		cancel()
-		s.mu.Lock()
-		if current := s.runtimes[id]; current != nil {
-			current.Recording = false
-			current.RecordCancel = nil
-		}
-		s.mu.Unlock()
-		return err
-	}
-
-	fileName := time.Now().Format("15-04-05.000") + ".mp4"
-	path := filepath.Join(dir, fileName)
-
-	s.mu.Lock()
-	if current := s.runtimes[id]; current != nil {
-		current.RecordingFile = path
-	}
-	s.mu.Unlock()
-
-	go s.recordLoop(ctx, camera, path)
-	log.Printf("camera %s recording started: %s", id, path)
+	go s.recordLoop(ctx, camera)
+	log.Printf("camera %s recording started in segmented archive mode", id)
 	return nil
 }
 
-func (s *Server) recordLoop(ctx context.Context, camera Camera, path string) {
+func (s *Server) recordLoop(ctx context.Context, camera Camera) {
 	defer func() {
 		s.mu.Lock()
 		if rt := s.runtimes[camera.ID]; rt != nil {
@@ -1155,41 +1145,93 @@ func (s *Server) recordLoop(ctx context.Context, camera Camera, path string) {
 			rt.RecordingFile = ""
 		}
 		s.mu.Unlock()
-		log.Printf("camera %s recording stopped: %s", camera.ID, path)
+		log.Printf("camera %s recording stopped", camera.ID)
 	}()
 
-	u := s.cfg.Go2RTC + "/api/stream.mp4?src=" + url.QueryEscape(camera.ID+"_main")
+	for {
+		if ctx.Err() != nil {
+			return
+		}
+		if err := s.archiveReady(); err != nil {
+			log.Printf("camera %s recording paused: %v", camera.ID, err)
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(5 * time.Second):
+				continue
+			}
+		}
+
+		started := time.Now()
+		dir := filepath.Join(s.cfg.ArchiveDir, camera.ID, started.Format("2006-01-02"))
+		if err := os.MkdirAll(dir, 0755); err != nil {
+			log.Printf("camera %s archive directory: %v", camera.ID, err)
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(5 * time.Second):
+				continue
+			}
+		}
+
+		path := filepath.Join(dir, started.Format("15-04-05.000")+".mp4")
+		s.mu.Lock()
+		if rt := s.runtimes[camera.ID]; rt != nil {
+			rt.RecordingFile = path
+		}
+		s.mu.Unlock()
+
+		if err := s.recordSegment(ctx, camera, path); err != nil && ctx.Err() == nil {
+			log.Printf("camera %s recording segment: %v", camera.ID, err)
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(2 * time.Second):
+				continue
+			}
+		}
+	}
+}
+
+func (s *Server) recordSegment(parent context.Context, camera Camera, path string) error {
+	ctx, cancel := context.WithTimeout(parent, time.Duration(s.cfg.SegmentSeconds)*time.Second)
+	defer cancel()
+
+	u := s.cfg.Go2RTC + "/api/stream.mp4?src=" + url.QueryEscape(camera.ID+"_main") +
+		"&duration=" + strconv.Itoa(s.cfg.SegmentSeconds) +
+		"&filename=" + url.QueryEscape(filepath.Base(path))
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
 	if err != nil {
-		log.Printf("camera %s recording request: %v", camera.ID, err)
-		return
+		return err
 	}
 
-	client := &http.Client{}
-	resp, err := client.Do(req)
+	resp, err := (&http.Client{}).Do(req)
 	if err != nil {
-		if ctx.Err() == nil {
-			log.Printf("camera %s recording stream: %v", camera.ID, err)
+		if parent.Err() != nil {
+			return nil
 		}
-		return
+		return err
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 2048))
-		log.Printf("camera %s recording HTTP %s: %s", camera.ID, resp.Status, strings.TrimSpace(string(body)))
-		return
+		return fmt.Errorf("go2rtc HTTP %s: %s", resp.Status, strings.TrimSpace(string(body)))
 	}
 
-	f, err := os.Create(path)
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
 	if err != nil {
-		log.Printf("camera %s recording file: %v", camera.ID, err)
-		return
+		return err
 	}
-	defer f.Close()
+	_, copyErr := io.Copy(f, resp.Body)
+	closeErr := f.Close()
 
-	if _, err := io.Copy(f, resp.Body); err != nil && ctx.Err() == nil {
-		log.Printf("camera %s recording copy: %v", camera.ID, err)
+	if parent.Err() != nil {
+		return nil
 	}
+	if copyErr != nil {
+		return copyErr
+	}
+	return closeErr
 }
 
 func (s *Server) stopRecording(id string) {
@@ -1202,6 +1244,74 @@ func (s *Server) stopRecording(id string) {
 	if rt.RecordCancel != nil {
 		rt.RecordCancel()
 	}
+}
+
+func (s *Server) archiveReady() error {
+	mount := filepath.Clean(strings.TrimSpace(s.cfg.ArchiveMount))
+	dir := filepath.Clean(strings.TrimSpace(s.cfg.ArchiveDir))
+	if mount == "." || dir == "." || mount == "/" {
+		return fmt.Errorf("archive mount/path is not configured safely")
+	}
+	mount, err := filepath.Abs(mount)
+	if err != nil {
+		return err
+	}
+	dir, err = filepath.Abs(dir)
+	if err != nil {
+		return err
+	}
+	rel, err := filepath.Rel(mount, dir)
+	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(os.PathSeparator)) {
+		return fmt.Errorf("archive_dir %q is outside archive_mount %q", dir, mount)
+	}
+	mounted, err := isMountPoint(mount)
+	if err != nil {
+		return err
+	}
+	if !mounted {
+		return fmt.Errorf("archive storage is not mounted: %s", mount)
+	}
+	return nil
+}
+
+func isMountPoint(path string) (bool, error) {
+	path, err := filepath.Abs(filepath.Clean(path))
+	if err != nil {
+		return false, err
+	}
+	data, err := os.ReadFile("/proc/self/mountinfo")
+	if err != nil {
+		return false, err
+	}
+	for _, line := range strings.Split(string(data), "\n") {
+		fields := strings.Fields(line)
+		if len(fields) < 6 {
+			continue
+		}
+		mountPoint := decodeMountInfoPath(fields[4])
+		if mountPoint == path {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+func decodeMountInfoPath(value string) string {
+	var b strings.Builder
+	for i := 0; i < len(value); i++ {
+		if value[i] != '\\' || i+3 >= len(value) {
+			b.WriteByte(value[i])
+			continue
+		}
+		oct, err := strconv.ParseUint(value[i+1:i+4], 8, 8)
+		if err == nil {
+			b.WriteByte(byte(oct))
+			i += 3
+			continue
+		}
+		b.WriteByte(value[i])
+	}
+	return b.String()
 }
 
 func decodeJSON(r *http.Request, v any) error {
@@ -1364,18 +1474,20 @@ func (s *Server) configAPI(w http.ResponseWriter,r *http.Request){
 	if !u.Admin{http.Error(w,"forbidden",403);return}
 	switch r.Method{
 	case http.MethodGet:
-		jsonResponse(w,map[string]any{"recording_dir":s.cfg.RecordingDir,"motion_post_seconds":s.cfg.MotionPostSeconds})
+		jsonResponse(w,map[string]any{"archive_dir":s.cfg.ArchiveDir,"archive_mount":s.cfg.ArchiveMount,"segment_seconds":s.cfg.SegmentSeconds,"motion_post_seconds":s.cfg.MotionPostSeconds})
 	case http.MethodPut:
-		var p struct{RecordingDir string;MotionPostSeconds int}
+		var p struct{ArchiveDir string `json:"archive_dir"`;ArchiveMount string `json:"archive_mount"`;SegmentSeconds int `json:"segment_seconds"`;MotionPostSeconds int `json:"motion_post_seconds"`}
 		if err:=decodeJSON(r,&p);err!=nil{http.Error(w,err.Error(),400);return}
-		p.RecordingDir=strings.TrimSpace(p.RecordingDir)
-		if p.RecordingDir==""{http.Error(w,"recording directory is required",400);return}
+		p.ArchiveDir=strings.TrimSpace(p.ArchiveDir)
+		p.ArchiveMount=strings.TrimSpace(p.ArchiveMount)
+		if p.ArchiveDir==""||p.ArchiveMount==""{http.Error(w,"archive_dir and archive_mount are required",400);return}
+		if p.SegmentSeconds<30{p.SegmentSeconds=30}
+		if p.SegmentSeconds>900{p.SegmentSeconds=900}
 		if p.MotionPostSeconds<0{p.MotionPostSeconds=0}
-		s.cfg.RecordingDir=p.RecordingDir;s.cfg.MotionPostSeconds=p.MotionPostSeconds
+		s.cfg.ArchiveDir=p.ArchiveDir;s.cfg.ArchiveMount=p.ArchiveMount;s.cfg.SegmentSeconds=p.SegmentSeconds;s.cfg.MotionPostSeconds=p.MotionPostSeconds
 		data,err:=json.MarshalIndent(s.cfg,"","  ");if err!=nil{http.Error(w,err.Error(),500);return}
 		if err=os.WriteFile("config.json",append(data,'\n'),0644);err!=nil{http.Error(w,err.Error(),500);return}
-		if err=os.MkdirAll(s.cfg.RecordingDir,0755);err!=nil{http.Error(w,err.Error(),500);return}
-		jsonResponse(w,map[string]any{"status":"ok","recording_dir":s.cfg.RecordingDir,"motion_post_seconds":s.cfg.MotionPostSeconds})
+		jsonResponse(w,map[string]any{"status":"ok","archive_dir":s.cfg.ArchiveDir,"archive_mount":s.cfg.ArchiveMount,"segment_seconds":s.cfg.SegmentSeconds,"motion_post_seconds":s.cfg.MotionPostSeconds})
 	default:w.WriteHeader(405)
 	}
 }
