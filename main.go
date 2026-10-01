@@ -1158,8 +1158,8 @@ func (s *Server) recordLoop(ctx context.Context, camera Camera) {
 			case <-ctx.Done():
 				return
 			case <-time.After(5 * time.Second):
-				continue
 			}
+			continue
 		}
 
 		started := time.Now()
@@ -1170,8 +1170,8 @@ func (s *Server) recordLoop(ctx context.Context, camera Camera) {
 			case <-ctx.Done():
 				return
 			case <-time.After(5 * time.Second):
-				continue
 			}
+			continue
 		}
 
 		path := filepath.Join(dir, started.Format("15-04-05.000")+".mp4")
@@ -1216,6 +1216,10 @@ func (s *Server) recordSegment(parent context.Context, camera Camera, path strin
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 2048))
 		return fmt.Errorf("go2rtc HTTP %s: %s", resp.Status, strings.TrimSpace(string(body)))
+	}
+
+	if err := s.archiveReady(); err != nil {
+		return err
 	}
 
 	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
