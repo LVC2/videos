@@ -1,5 +1,5 @@
 {
-  "listen": "127.0.0.1:8090",
+  "listen": "0.0.0.0:8090",
   "go2rtc": "http://127.0.0.1:1984",
   "media_dir": "./runtime",
   "archive_dir": "/mnt/truenas/recordings",
