@@ -33,7 +33,9 @@ Hikvision ISAPI
 - запуск записи при `VMD active`;
 - остановка записи после `motion_post_seconds`;
 - запись Main Stream через go2rtc `/api/stream.mp4`;
-- каталог архива: `runtime/recordings/<camera>/<YYYY-MM-DD>/`;
+- сегментация архива с ограничением `segment_seconds`;
+- архив только на подключённом TrueNAS, без локального fallback;
+- каталог архива: `<archive_dir>/<camera>/<YYYY-MM-DD>/`;
 - управление камерами и разделами через UI.
 
 go2rtc предоставляет WHEP WebRTC endpoint `/api/webrtc?src=...` и MP4 progressive stream API; эти интерфейсы используются Video Core вместо HLS/FFmpeg.
@@ -61,6 +63,9 @@ Production использует systemd EnvironmentFile.
   "listen": "127.0.0.1:8090",
   "go2rtc": "http://127.0.0.1:1984",
   "media_dir": "./runtime",
+  "archive_dir": "/mnt/truenas/recordings",
+  "archive_mount": "/mnt/truenas",
+  "segment_seconds": 300,
   "motion_post_seconds": 10,
   "db_dsn": ""
 }
@@ -72,9 +77,13 @@ Production использует systemd EnvironmentFile.
 
 При `VMD active` Video Core открывает Main Stream через go2rtc и сохраняет получаемый MP4-поток в архив.
 
-При `VMD inactive` запись продолжается ещё `motion_post_seconds` секунд.
+Каждый файл ограничен параметром `segment_seconds` (по умолчанию 300 секунд). Даже если движение длится часами, один MP4 не разрастается до гигабайтов: после завершения сегмента создаётся следующий.
 
-Сервер не выполняет motion detection и не перекодирует видео.
+При `VMD inactive` запись продолжается ещё `motion_post_seconds` секунд, после чего текущий сегмент корректно закрывается.
+
+Сервер не выполняет motion detection и не перекодирует видео. Motion detection выполняет сама Hikvision через VMD.
+
+Перед каждой записью Video Core проверяет, что `archive_mount` действительно является точкой монтирования. Если TrueNAS отключён или не смонтирован, запись не начинается и локальный диск не используется.
 
 ## Следующий этап
 
