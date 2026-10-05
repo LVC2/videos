@@ -965,22 +965,43 @@ func (s *Server) ensureGo2RTCStream(name, source string) error {
 	q.Set("src", source)
 	u.RawQuery = q.Encode()
 
-	req, err := http.NewRequest(http.MethodPut, u.String(), nil)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	// Existing streams must be updated with PATCH. PUT creates a stream but
+	// does not reliably replace an already registered source in the running go2rtc.
+	patchReq, err := http.NewRequestWithContext(ctx, http.MethodPatch, u.String(), nil)
 	if err != nil {
 		return err
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	req = req.WithContext(ctx)
+	resp, err := s.http.Do(patchReq)
+	if err != nil {
+		return err
+	}
+	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+		resp.Body.Close()
+		return nil
+	}
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+	resp.Body.Close()
 
-	resp, err := s.http.Do(req)
+	// First creation: PATCH may return 404 when the stream does not exist yet.
+	if resp.StatusCode != http.StatusNotFound {
+		return fmt.Errorf("PATCH HTTP %s: %s", resp.Status, strings.TrimSpace(string(body)))
+	}
+
+	putReq, err := http.NewRequestWithContext(ctx, http.MethodPut, u.String(), nil)
+	if err != nil {
+		return err
+	}
+	resp, err = s.http.Do(putReq)
 	if err != nil {
 		return err
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
-		return fmt.Errorf("HTTP %s: %s", resp.Status, strings.TrimSpace(string(body)))
+		return fmt.Errorf("PUT HTTP %s: %s", resp.Status, strings.TrimSpace(string(body)))
 	}
 	return nil
 }
