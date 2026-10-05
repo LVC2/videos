@@ -117,21 +117,6 @@
       <div class="modal-foot"><button class="btn primary" @click="saveConfig">Сохранить настройки</button></div>
     </section></main>
 
-    <div v-if="liveCamera" class="modal-backdrop" @click.self="closeLive">
-      <div class="live-modal">
-        <div class="modal-head">
-          <div><strong>{{liveCamera.name}}</strong><div class="muted">{{liveCamera.id}} · live · WebRTC · поток 102</div></div>
-          <div class="actions">
-            <button class="btn live-close" @click="closeLive">Закрыть</button>
-          </div>
-        </div>
-        <div class="live-video-wrap">
-          <video ref="liveVideo" class="live-video" autoplay playsinline></video>
-          <div v-if="liveError" class="live-status">{{liveError}}</div>
-        </div>
-      </div>
-    </div>
-
     <div v-if="scanOpen" class="modal-backdrop" @click.self="scanOpen=false"><div class="modal"><div class="modal-head"><div><strong>Сканирование сети</strong><div class="muted">Проверяем TCP 554, 80 и 443. Только приватные IPv4 /24.</div></div><button class="btn" @click="scanOpen=false">Закрыть</button></div><div class="scanner"><div class="scanner-form"><div class="field"><label>Сеть</label><input v-model.trim="scanCIDR" placeholder="10.120.10.0/24"></div><button class="btn primary" :disabled="scanBusy" @click="scanNetwork">{{scanBusy?'Сканирование…':'Начать сканирование'}}</button></div><div v-if="scanResults.length" class="scan-results"><div v-for="r in scanResults" :key="r.ip" class="scan-item"><div><strong>{{r.ip}}</strong><div class="muted">{{r.server||'Устройство отвечает по сети'}}</div></div><div class="port-badges"><span v-if="r.rtsp" class="port-badge">RTSP 554</span><span v-if="r.http" class="port-badge">HTTP 80</span><span v-if="r.https" class="port-badge">HTTPS 443</span><button class="btn" @click="form.ip=r.ip;form.username='admin';form.password='';form.enabled=true;form.autostart=true;form.section_id='';form.sort_order=0;editing=false;editingId='';scanOpen=false;modal=true">Добавить</button></div></div></div><div v-else-if="!scanBusy" class="empty-list">Ничего не найдено.</div></div></div></div>
     <div v-if="modal" class="modal-backdrop" @click.self="modal=false"><div class="modal"><div class="modal-head"><strong>{{editing?'Редактирование камеры':'Новая камера'}}</strong><button class="btn" @click="modal=false">Закрыть</button></div><form @submit.prevent="saveCamera"><div class="form"><div class="field full"><label>IP-адрес</label><input v-model.trim="form.ip" required></div><div class="field"><label>Логин</label><input v-model.trim="form.username" required></div><div class="field"><label>Пароль</label><input v-model="form.password" type="password" :required="!editing"></div><div class="field"><label>Раздел</label><select v-model="form.section_id"><option value="">Без раздела</option><option v-for="s in sections" :value="String(s.id)">{{s.name}}</option></select></div><div class="field"><label>Порядок</label><input v-model.number="form.sort_order" type="number" min="0"></div><div class="checks"><label><input v-model="form.enabled" type="checkbox"> Камера включена</label><label><input v-model="form.autostart" type="checkbox"> Автозапуск</label></div></div><div class="modal-foot"><button type="button" class="btn" @click="modal=false">Отмена</button><button class="btn primary" type="submit">{{editing?'Сохранить':'Добавить'}}</button></div></form></div></div>
 
@@ -157,20 +142,19 @@ async reload(){this.error='';try{this.cameras=await this.api('/api/cameras');thi
 async loadUsers(){this.users=await this.api('/api/users')},
 roleName(r){return r==='admin'?'Администратор':r==='operator'?'Оператор':'Наблюдатель'},
 visibleCameras(){
+  if(this.focusedCameraId){
+    const focused=this.cameras.find(c=>c.id===this.focusedCameraId);
+    return focused?[focused]:this.cameras.slice(0,1);
+  }
   return this.cameras.slice(0,this.gridSize);
 },
-streamFor(camera){
-  return this.cameraStreams[camera.id] || this.defaultStream;
-},
-setVideoRef(id,el){
-  if(el)this.videoRefs[id]=el; else delete this.videoRefs[id];
-},
+streamFor(camera){return this.cameraStreams[camera.id]||this.defaultStream},
+setVideoRef(id,el){if(el)this.videoRefs[id]=el;else delete this.videoRefs[id]},
+focusCamera(camera){this.focusedCameraId=camera.id;this.gridSize=1;this.syncGridStreams()},
+clearFocus(){if(this.focusedCameraId){this.focusedCameraId='';this.gridSize=4;this.syncGridStreams()}},
 async connectStream(camera,stream){
   this.closeStream(camera.id);
-  if(!camera.running){
-    this.liveErrors[camera.id]='Камера остановлена';
-    return;
-  }
+  if(!camera.running){this.liveErrors[camera.id]='Камера остановлена';return}
   const video=this.videoRefs[camera.id];
   if(!video)return;
   try{
@@ -180,7 +164,7 @@ async connectStream(camera,stream){
     pc.onconnectionstatechange=()=>{
       if(['failed','disconnected'].includes(pc.connectionState)&&this.streamPCs[camera.id]===pc){
         this.liveErrors[camera.id]='Поток недоступен';
-      } else if(pc.connectionState==='connected'&&this.streamPCs[camera.id]===pc){
+      }else if(pc.connectionState==='connected'&&this.streamPCs[camera.id]===pc){
         delete this.liveErrors[camera.id];
       }
     };
@@ -211,6 +195,7 @@ closeStream(id){
   if(video)video.srcObject=null;
 },
 async syncGridStreams(){
+  if(this.tab!=='live'){this.closeAllStreams();return}
   const visible=new Set(this.visibleCameras.map(c=>c.id));
   for(const id of Object.keys(this.streamPCs))if(!visible.has(id))this.closeStream(id);
   await this.$nextTick();
@@ -220,22 +205,10 @@ async syncGridStreams(){
     if(!pc||pc.connectionState==='failed'||pc.connectionState==='closed')await this.connectStream(camera,stream);
   }
 },
-setGridSize(n){
-  this.gridSize=n;
-  this.syncGridStreams();
-},
-setDefaultStream(stream){
-  this.defaultStream=stream;
-  for(const camera of this.visibleCameras){
-    this.cameraStreams[camera.id]=stream;
-  }
-  this.syncGridStreams();
-},
-setCameraStream(camera,stream){
-  this.cameraStreams[camera.id]=stream;
-  this.connectStream(camera,stream);
-},
-roleName(r){return r==='admin'?'Администратор':r==='operator'?'Оператор':'Наблюдатель'},
+closeAllStreams(){for(const id of Object.keys(this.streamPCs))this.closeStream(id)},
+setGridSize(n){this.focusedCameraId='';this.gridSize=n;this.syncGridStreams()},
+setDefaultStream(stream){this.defaultStream=stream;for(const camera of this.visibleCameras)this.cameraStreams[camera.id]=stream;this.syncGridStreams()},
+setCameraStream(camera,stream){this.cameraStreams[camera.id]=stream;this.connectStream(camera,stream)},
 scopeName(s){return s==='all_cameras'?'Все камеры':s==='section'?'Раздел':s==='none'?'Нет доступа':'Отдельные камеры'},
 emptyCamera(){return{ip:'',username:'',password:'',enabled:true,autostart:true,section_id:'',sort_order:0}},
 openNew(){this.editing=false;this.form=this.emptyCamera();this.modal=true},
@@ -245,15 +218,6 @@ async remove(c){if(!confirm('Удалить камеру «'+c.name+'»?'))retur
 async toggle(c){try{await this.api('/api/cameras/'+encodeURIComponent(c.id)+'/'+(c.running?'stop':'start'),{method:'POST'});await new Promise(r=>setTimeout(r,350));await this.reload()}catch(e){this.error=e.message}},
 scanOpenNetwork(){this.scanResults=[];this.scanOpen=true},
 async scanNetwork(){try{this.scanBusy=true;this.error='';this.scanResults=await this.api('/api/scan?cidr='+encodeURIComponent(this.scanCIDR));}catch(e){this.error=e.message}finally{this.scanBusy=false}},
-snapshotUrl(c){return '/api/cameras/'+encodeURIComponent(c.id)+'/snapshot?t='+this.snapshotTick},
-openLive(camera){this.cameraStreams[camera.id]=this.streamFor(camera);this.setGridSize(1);},
-closeLive(){
-  if(this.livePC){this.livePC.ontrack=null;this.livePC.close();this.livePC=null}
-  if(this.liveCamera&&this.$refs.liveVideo)this.$refs.liveVideo.srcObject=null;
-  this.liveCamera=null;
-  this.liveError='';
-},
-refreshSnapshots(){this.snapshotErrors={};this.snapshotTick=Date.now()},
 openSectionNew(){this.sectionEditing=false;this.sectionForm={id:null,name:'',sort_order:0};this.sectionModal=true},
 openSectionEdit(s){this.sectionEditing=true;this.sectionForm={id:s.id,name:s.name,sort_order:s.sort_order||0};this.sectionModal=true},
 async saveSection(){try{const body={name:this.sectionForm.name,sort_order:Number(this.sectionForm.sort_order)||0};await this.api(this.sectionEditing?'/api/sections/'+this.sectionForm.id:'/api/sections',{method:this.sectionEditing?'PUT':'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});this.sectionModal=false;await this.reload();this.tab='sections'}catch(e){this.error=e.message}},
@@ -265,7 +229,16 @@ async removeUser(u){if(!confirm('Удалить пользователя «'+u.d
 async saveConfig(){try{this.config.motion_post_seconds=Number(this.config.motion_post_seconds)||0;await this.api('/api/config',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({RecordingDir:this.config.recording_dir,MotionPostSeconds:this.config.motion_post_seconds})});alert('Настройки сохранены')}catch(e){this.error=e.message}}
 },
 computed:{},
-mounted(){window.addEventListener('keydown',e=>{if(e.key==='Escape')this.closeLive()});this.checkAuth();setInterval(()=>{if(this.authenticated&&this.tab==='live')this.syncGridStreams()},15000);setInterval(()=>{if(this.authenticated)this.reload()},15000)}
+mounted(){
+  window.addEventListener('keydown',e=>{if(e.key==='Escape'&&this.focusedCameraId)this.clearFocus()});
+  this.checkAuth().then(()=>this.$nextTick(()=>this.syncGridStreams()));
+  setInterval(()=>{if(this.authenticated)this.reload()},15000);
+  setInterval(()=>{if(this.authenticated&&this.tab==='live')this.syncGridStreams()},15000);
+},
+watch:{
+  tab(){this.$nextTick(()=>this.syncGridStreams())},
+  cameras(){if(this.tab==='live')this.$nextTick(()=>this.syncGridStreams())}
+}
 }).mount('#app');
 </script>
 </body>
