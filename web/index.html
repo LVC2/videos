@@ -35,29 +35,43 @@ button{touch-action:manipulation}
 .monitor{padding:16px;max-width:1800px;margin:0 auto}
 .monitor-toolbar{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:0 2px 12px}
 .monitor-title{font-size:18px;font-weight:750}.monitor-info{font-size:12px;color:var(--muted)}
-.camera-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+.camera-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.camera-grid.grid-1{grid-template-columns:1fr}
+.camera-grid.grid-4{grid-template-columns:repeat(2,minmax(0,1fr))}
+.camera-grid.grid-6{grid-template-columns:repeat(3,minmax(0,1fr))}
+.camera-grid.grid-9{grid-template-columns:repeat(3,minmax(0,1fr))}
+.camera-grid.grid-16{grid-template-columns:repeat(4,minmax(0,1fr))}
 .card{
-  min-width:0;background:var(--surface);border:1px solid var(--line);
-  border-radius:14px;overflow:hidden;box-shadow:0 8px 28px rgba(0,0,0,.18)
+  min-width:0;background:#05070a;border:1px solid var(--line);
+  border-radius:6px;overflow:hidden;position:relative;box-shadow:none
 }
-.snapshot{
-  position:relative;aspect-ratio:16/9;background:#05070a;overflow:hidden
+.live-tile{
+  position:relative;aspect-ratio:16/9;background:#000;overflow:hidden
 }
-.snapshot img{width:100%;height:100%;display:block;object-fit:cover;cursor:zoom-in}
+.live-tile video{width:100%;height:100%;display:block;object-fit:contain;background:#000}
+.live-tile .tile-top{
+  position:absolute;left:0;right:0;top:0;padding:7px 8px;
+  display:flex;justify-content:space-between;align-items:center;gap:7px;
+  background:linear-gradient(180deg,rgba(0,0,0,.78),transparent);pointer-events:none
+}
+.live-tile .tile-bottom{
+  position:absolute;left:0;right:0;bottom:0;padding:7px 8px;
+  display:flex;justify-content:space-between;align-items:end;gap:7px;
+  background:linear-gradient(0deg,rgba(0,0,0,.82),transparent)
+}
+.tile-name{font-size:12px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tile-error{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;text-align:center;padding:20px;color:#8490a0;font-size:12px;background:rgba(0,0,0,.45)}
+.stream-select{width:auto;min-height:30px;padding:5px 8px;font-size:11px;background:rgba(5,7,10,.82);border-color:rgba(255,255,255,.18)}
+.grid-toolbar{display:flex;align-items:center;gap:7px;flex-wrap:wrap}
+.grid-buttons{display:flex;gap:4px}
+.grid-button{min-width:34px;min-height:32px;padding:5px 8px}
+.stream-toolbar{display:flex;align-items:center;gap:7px}
+.stream-toolbar .btn{min-height:32px;padding:5px 9px;font-size:11px}
 .live-modal{width:min(1400px,98vw);height:min(90vh,900px);display:flex;flex-direction:column;background:#05070a;border:1px solid #303a47;border-radius:13px;overflow:hidden;box-shadow:0 24px 80px rgba(0,0,0,.6)}
 .live-video-wrap{position:relative;flex:1;min-height:0;background:#000;display:flex;align-items:center;justify-content:center}
 .live-video{width:100%;height:100%;object-fit:contain;background:#000}
 .live-status{position:absolute;left:14px;bottom:14px;padding:7px 10px;border-radius:8px;background:rgba(0,0,0,.72);font-size:12px;color:#d5dbe3}
 .live-close{min-width:38px}
-.snapshot-placeholder{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#596575;font-size:13px}
-.snapshot-top{
-  position:absolute;inset:0 0 auto 0;padding:10px 11px;
-  display:flex;justify-content:space-between;align-items:center;
-  background:linear-gradient(180deg,rgba(0,0,0,.68),transparent);pointer-events:none
-}
-.snapshot-bottom{
-  position:absolute;left:10px;bottom:10px;display:flex;gap:7px;align-items:center
-}
 .badge{
   display:inline-flex;align-items:center;gap:6px;padding:5px 8px;border-radius:999px;
   background:rgba(4,7,10,.72);border:1px solid rgba(255,255,255,.12);
@@ -93,14 +107,14 @@ table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:11px 12p
   .actions{width:100%;justify-content:flex-start;overflow-x:auto;flex-wrap:nowrap;padding-bottom:2px}
   .actions .tab,.actions .btn{flex:0 0 auto}.actions .muted{display:none}
   .monitor{padding:10px}.monitor-toolbar{margin-bottom:9px}.monitor-title{font-size:16px}
-  .camera-grid{grid-template-columns:1fr;gap:10px}.card{border-radius:11px}
-  .snapshot{aspect-ratio:16/10}.card-body{padding:10px}.card-meta{font-size:10px}
+  .camera-grid,.camera-grid.grid-4,.camera-grid.grid-6,.camera-grid.grid-9,.camera-grid.grid-16{grid-template-columns:1fr;gap:4px}.card{border-radius:4px}
+  .live-tile{aspect-ratio:16/10}.card-body{padding:10px}.card-meta{font-size:10px}
   .manage{padding:10px}.panel{border-radius:10px}
   .panel-head{align-items:flex-start;flex-wrap:wrap}
   table{display:block;overflow-x:auto;white-space:nowrap}
   .form{grid-template-columns:1fr}.full{grid-column:auto}
 }
-@media(min-width:1500px){.camera-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media(min-width:1500px){.camera-grid.grid-4{grid-template-columns:repeat(2,minmax(0,1fr))}.camera-grid.grid-6,.camera-grid.grid-9{grid-template-columns:repeat(3,minmax(0,1fr))}.camera-grid.grid-16{grid-template-columns:repeat(4,minmax(0,1fr))}}
 @media(prefers-reduced-motion:reduce){*{scroll-behavior:auto!important}}
 </style>
 </head>
@@ -144,25 +158,34 @@ table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:11px 12p
 
     <main v-if="tab==='live'" class="monitor">
       <div class="monitor-toolbar">
-        <div><div class="monitor-title">Монитор</div><div class="monitor-info">Актуальные кадры · обновление каждые 5 секунд</div></div>
-        <div class="monitor-info">{{cameras.length}} камер</div>
+        <div><div class="monitor-title">Монитор</div><div class="monitor-info">Живой просмотр · как в iVMS</div></div>
+        <div class="grid-toolbar">
+          <div class="grid-buttons">
+            <button v-for="n in [1,4,6,9,16]" :key="n" class="btn grid-button" :class="{primary:gridSize===n}" @click="setGridSize(n)">{{n}}</button>
+          </div>
+          <div class="stream-toolbar">
+            <span class="muted">Все:</span>
+            <button class="btn" :class="{primary:defaultStream==='sub'}" @click="setDefaultStream('sub')">Sub</button>
+            <button class="btn" :class="{primary:defaultStream==='main'}" @click="setDefaultStream('main')">Main</button>
+          </div>
+          <span class="monitor-info">{{cameras.length}} камер</span>
+        </div>
       </div>
-      <div class="camera-grid">
-        <section v-for="camera in cameras" :key="camera.id" class="card">
-          <div class="snapshot" @click="openLive(camera)">
-            <img :src="snapshotUrl(camera)" :alt="camera.name" loading="eager" @error="snapshotErrors[camera.id]=true">
-            <div v-if="snapshotErrors[camera.id]" class="snapshot-placeholder">Кадр временно недоступен</div>
-            <div class="snapshot-top">
-              <span class="badge"><span class="dot" :class="{off:!camera.stream_ok}"></span>{{camera.stream_ok?'Камера онлайн':(camera.running?'Ошибка видеопотока':'Камера остановлена')}}</span>
+      <div class="camera-grid" :class="'grid-'+gridSize">
+        <section v-for="camera in visibleCameras" :key="camera.id" class="card">
+          <div class="live-tile">
+            <video :ref="el => setVideoRef(camera.id,el)" autoplay playsinline muted></video>
+            <div v-if="liveErrors[camera.id]" class="tile-error">{{liveErrors[camera.id]}}</div>
+            <div class="tile-top">
+              <span class="badge"><span class="dot" :class="{off:!camera.running || !camera.stream_ok}"></span>{{camera.name}}</span>
               <span v-if="camera.recording" class="badge">● REC</span>
             </div>
-            <div class="snapshot-bottom"><span class="badge">{{snapshotTickLabel}}</span></div>
-          </div>
-          <div class="card-body">
-            <div class="card-title-row"><div class="title">{{camera.name}}</div><span class="muted">{{camera.section_name || 'Без раздела'}}</span></div>
-            <div class="card-meta"><span>Поток 102 · JPEG</span><span>{{camera.last_frame?'Кадр: '+new Date(camera.last_frame).toLocaleTimeString():(camera.stream_error?'Нет кадра':'Проверка…')}}</span></div><div v-if="camera.stream_error" class="error" style="padding:8px 0 0">{{camera.stream_error}}</div>
-            <div v-if="currentUser.admin || currentUser.can_control" class="card-actions">
-              <button class="btn" @click="toggle(camera)">{{camera.running?'Остановить':'Запустить'}}</button>
+            <div class="tile-bottom">
+              <span class="badge">{{streamFor(camera)==='main'?'MAIN':'SUB'}}</span>
+              <select class="stream-select" :value="streamFor(camera)" @change="setCameraStream(camera,$event.target.value)" @click.stop>
+                <option value="sub">Sub stream</option>
+                <option value="main">Main stream</option>
+              </select>
             </div>
           </div>
         </section>
@@ -224,7 +247,7 @@ table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:11px 12p
 <script>
 const {createApp}=Vue;
 createApp({
-data(){return{ready:false,authenticated:false,setupRequired:false,currentUser:null,login:{username:'',password:'',displayName:''},error:'',tab:'live',cameras:[],allCameras:[],sections:[],users:[],snapshotTick:0,snapshotErrors:{},scanOpen:false,scanCIDR:'10.120.10.0/24',scanBusy:false,scanResults:[],modal:false,editing:false,editingId:'',form:{ip:'',username:'',password:'',enabled:true,autostart:true,section_id:'',sort_order:0},sectionModal:false,sectionEditing:false,sectionForm:{id:null,name:'',sort_order:0},userModal:false,userEditing:false,userEditingId:0,userForm:{username:'',displayName:'',password:'',role:'viewer',scope:'selected',sectionIDs:[],cameraIDs:[],active:true},config:{recording_dir:'',motion_post_seconds:10},liveCamera:null,liveError:'',livePC:null}},
+data(){return{ready:false,authenticated:false,setupRequired:false,currentUser:null,login:{username:'',password:'',displayName:''},error:'',tab:'live',cameras:[],allCameras:[],sections:[],users:[],snapshotTick:0,snapshotErrors:{},gridSize:4,defaultStream:'sub',cameraStreams:{},videoRefs:{},streamPCs:{},liveErrors:{},scanOpen:false,scanCIDR:'10.120.10.0/24',scanBusy:false,scanResults:[],modal:false,editing:false,editingId:'',form:{ip:'',username:'',password:'',enabled:true,autostart:true,section_id:'',sort_order:0},sectionModal:false,sectionEditing:false,sectionForm:{id:null,name:'',sort_order:0},userModal:false,userEditing:false,userEditingId:0,userForm:{username:'',displayName:'',password:'',role:'viewer',scope:'selected',sectionIDs:[],cameraIDs:[],active:true},config:{recording_dir:'',motion_post_seconds:10},liveCamera:null,liveError:'',livePC:null}},
 methods:{
 async api(url,opt){const r=await fetch(url,opt||{});if(!r.ok){let t=await r.text();throw new Error(t||('HTTP '+r.status));}return r.json()},
 async checkAuth(){try{const d=await this.api('/api/auth/status');this.setupRequired=!!d.setup_required;this.authenticated=!!d.authenticated;this.currentUser=d.user;if(this.authenticated)await this.reload();}catch(e){this.error=e.message}finally{this.ready=true}},
@@ -233,6 +256,86 @@ async bootstrap(){try{this.error='';await this.api('/api/auth/bootstrap',{method
 async signout(){await fetch('/api/auth/logout',{method:'POST'});location.reload()},
 async reload(){this.error='';try{this.cameras=await this.api('/api/cameras');this.sections=await this.api('/api/sections');if(this.currentUser&&this.currentUser.admin){this.allCameras=await this.api('/api/cameras?all=1');await this.loadUsers();const d=await this.api('/api/config');this.config=d}}catch(e){if(String(e.message).includes('unauthorized')){location.reload()}else{this.error=e.message}}},
 async loadUsers(){this.users=await this.api('/api/users')},
+roleName(r){return r==='admin'?'Администратор':r==='operator'?'Оператор':'Наблюдатель'},
+visibleCameras(){
+  return this.cameras.slice(0,this.gridSize);
+},
+streamFor(camera){
+  return this.cameraStreams[camera.id] || this.defaultStream;
+},
+setVideoRef(id,el){
+  if(el)this.videoRefs[id]=el; else delete this.videoRefs[id];
+},
+async connectStream(camera,stream){
+  this.closeStream(camera.id);
+  if(!camera.running){
+    this.liveErrors[camera.id]='Камера остановлена';
+    return;
+  }
+  const video=this.videoRefs[camera.id];
+  if(!video)return;
+  try{
+    const pc=new RTCPeerConnection();
+    this.streamPCs[camera.id]=pc;
+    pc.ontrack=e=>{if(this.videoRefs[camera.id])this.videoRefs[camera.id].srcObject=e.streams[0]};
+    pc.onconnectionstatechange=()=>{
+      if(['failed','disconnected'].includes(pc.connectionState)&&this.streamPCs[camera.id]===pc){
+        this.liveErrors[camera.id]='Поток недоступен';
+      } else if(pc.connectionState==='connected'&&this.streamPCs[camera.id]===pc){
+        delete this.liveErrors[camera.id];
+      }
+    };
+    pc.addTransceiver('video',{direction:'recvonly'});
+    const offer=await pc.createOffer();
+    await pc.setLocalDescription(offer);
+    if(pc.iceGatheringState!=='complete'){
+      await new Promise(resolve=>{
+        const timer=setTimeout(resolve,3000);
+        pc.onicegatheringstatechange=()=>{if(pc.iceGatheringState==='complete'){clearTimeout(timer);resolve()}};
+      });
+    }
+    const answer=await fetch('/api/cameras/'+encodeURIComponent(camera.id)+'/webrtc?stream='+encodeURIComponent(stream),{
+      method:'POST',headers:{'Content-Type':'application/sdp'},body:pc.localDescription.sdp
+    });
+    if(!answer.ok)throw new Error((await answer.text())||('HTTP '+answer.status));
+    await pc.setRemoteDescription({type:'answer',sdp:await answer.text()});
+    if(this.streamPCs[camera.id]!==pc)pc.close();
+  }catch(e){
+    if(this.streamPCs[camera.id])delete this.streamPCs[camera.id];
+    this.liveErrors[camera.id]='Ошибка '+e.message;
+  }
+},
+closeStream(id){
+  const pc=this.streamPCs[id];
+  if(pc){pc.ontrack=null;pc.close();delete this.streamPCs[id]}
+  const video=this.videoRefs[id];
+  if(video)video.srcObject=null;
+},
+async syncGridStreams(){
+  const visible=new Set(this.visibleCameras.map(c=>c.id));
+  for(const id of Object.keys(this.streamPCs))if(!visible.has(id))this.closeStream(id);
+  await this.$nextTick();
+  for(const camera of this.visibleCameras){
+    const stream=this.streamFor(camera);
+    const pc=this.streamPCs[camera.id];
+    if(!pc||pc.connectionState==='failed'||pc.connectionState==='closed')await this.connectStream(camera,stream);
+  }
+},
+setGridSize(n){
+  this.gridSize=n;
+  this.syncGridStreams();
+},
+setDefaultStream(stream){
+  this.defaultStream=stream;
+  for(const camera of this.visibleCameras){
+    this.cameraStreams[camera.id]=stream;
+  }
+  this.syncGridStreams();
+},
+setCameraStream(camera,stream){
+  this.cameraStreams[camera.id]=stream;
+  this.connectStream(camera,stream);
+},
 roleName(r){return r==='admin'?'Администратор':r==='operator'?'Оператор':'Наблюдатель'},
 scopeName(s){return s==='all_cameras'?'Все камеры':s==='section'?'Раздел':s==='none'?'Нет доступа':'Отдельные камеры'},
 emptyCamera(){return{ip:'',username:'',password:'',enabled:true,autostart:true,section_id:'',sort_order:0}},
@@ -244,42 +347,7 @@ async toggle(c){try{await this.api('/api/cameras/'+encodeURIComponent(c.id)+'/'+
 scanOpenNetwork(){this.scanResults=[];this.scanOpen=true},
 async scanNetwork(){try{this.scanBusy=true;this.error='';this.scanResults=await this.api('/api/scan?cidr='+encodeURIComponent(this.scanCIDR));}catch(e){this.error=e.message}finally{this.scanBusy=false}},
 snapshotUrl(c){return '/api/cameras/'+encodeURIComponent(c.id)+'/snapshot?t='+this.snapshotTick},
-async openLive(camera){
-  this.closeLive();
-  this.liveCamera=camera;
-  this.liveError='Подключение…';
-  await this.$nextTick();
-  try{
-    const pc=new RTCPeerConnection();
-    this.livePC=pc;
-    pc.ontrack=e=>{if(this.$refs.liveVideo)this.$refs.liveVideo.srcObject=e.streams[0]};
-    pc.onconnectionstatechange=()=>{
-      if(['failed','disconnected','closed'].includes(pc.connectionState)&&this.liveCamera){
-        this.liveError='Live-поток недоступен.';
-      } else if(pc.connectionState==='connected'){
-        this.liveError='';
-      }
-    };
-    pc.addTransceiver('video',{direction:'recvonly'});
-    const offer=await pc.createOffer();
-    await pc.setLocalDescription(offer);
-    if(pc.iceGatheringState!=='complete'){
-      await new Promise(resolve=>{
-        const timer=setTimeout(resolve,3000);
-        pc.onicegatheringstatechange=()=>{
-          if(pc.iceGatheringState==='complete'){clearTimeout(timer);resolve()}
-        };
-      });
-    }
-    const answer=await fetch('/api/cameras/'+encodeURIComponent(camera.id)+'/webrtc',{
-      method:'POST',headers:{'Content-Type':'application/sdp'},body:pc.localDescription.sdp
-    });
-    if(!answer.ok) throw new Error((await answer.text())||('HTTP '+answer.status));
-    await pc.setRemoteDescription({type:'answer',sdp:await answer.text()});
-  }catch(e){
-    this.liveError='Не удалось открыть live: '+e.message;
-  }
-},
+openLive(camera){this.cameraStreams[camera.id]=this.streamFor(camera);this.setGridSize(1);},
 closeLive(){
   if(this.livePC){this.livePC.ontrack=null;this.livePC.close();this.livePC=null}
   if(this.liveCamera&&this.$refs.liveVideo)this.$refs.liveVideo.srcObject=null;
@@ -298,7 +366,7 @@ async removeUser(u){if(!confirm('Удалить пользователя «'+u.d
 async saveConfig(){try{this.config.motion_post_seconds=Number(this.config.motion_post_seconds)||0;await this.api('/api/config',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({RecordingDir:this.config.recording_dir,MotionPostSeconds:this.config.motion_post_seconds})});alert('Настройки сохранены')}catch(e){this.error=e.message}}
 },
 computed:{},
-mounted(){window.addEventListener('keydown',e=>{if(e.key==='Escape')this.closeLive()});this.checkAuth();setInterval(()=>{if(this.authenticated&&this.tab==='live')this.refreshSnapshots()},5000);setInterval(()=>{if(this.authenticated)this.reload()},15000)}
+mounted(){window.addEventListener('keydown',e=>{if(e.key==='Escape')this.closeLive()});this.checkAuth();setInterval(()=>{if(this.authenticated&&this.tab==='live')this.syncGridStreams()},15000);setInterval(()=>{if(this.authenticated)this.reload()},15000)}
 }).mount('#app');
 </script>
 </body>
