@@ -65,6 +65,7 @@ type cameraRuntime struct {
 	StopTimer     *time.Timer
 	Recording     bool
 	RecordingFile string
+	LastRecordAttempt time.Time
 	StreamOK      bool
 	StreamError   string
 	LastFrame     time.Time
@@ -1089,8 +1090,12 @@ func (s *Server) motionActive(id string) {
 		rt.StopTimer = nil
 	}
 	already := rt.Recording
+	recentAttempt := !rt.LastRecordAttempt.IsZero() && time.Since(rt.LastRecordAttempt) < 10*time.Second
+	if !already && !recentAttempt {
+		rt.LastRecordAttempt = time.Now()
+	}
 	s.mu.Unlock()
-	if !already {
+	if !already && !recentAttempt {
 		if err := s.startRecording(id); err != nil {
 			log.Printf("camera %s start recording: %v", id, err)
 		}
