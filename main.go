@@ -462,7 +462,16 @@ func (s *Server) createCamera(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	jsonResponse(w, map[string]any{"status": "ok"})
+	if enabled && autostart {
+		if camera, ok := s.findCamera(slug); ok {
+			if err := s.start(camera); err != nil {
+				log.Printf("camera %s autostart after creation failed: %v", slug, err)
+				jsonResponseStatus(w, http.StatusAccepted, map[string]any{"status": "ok", "autostart": false, "start_error": err.Error()})
+				return
+			}
+		}
+	}
+	jsonResponse(w, map[string]any{"status": "ok", "autostart": enabled && autostart})
 }
 
 func (s *Server) cameraDetails(w http.ResponseWriter, id string) {
