@@ -907,9 +907,11 @@ func (s *Server) start(camera Camera) error {
 	}
 	s.mu.Unlock()
 
+	// Browser WebRTC does not accept the camera's H265 MAIN stream on this path,
+	// so expose MAIN as an on-demand FFmpeg H264 transcoded source.
 	mainH264 := "ffmpeg:" + camera.RTSP + "#video=h264"
-	if err := s.ensureGo2RTCStream(camera.ID+"_main", camera.RTSP, mainH264); err != nil {
-		return fmt.Errorf("go2rtc main stream: %w", err)
+	if err := s.ensureGo2RTCStream(camera.ID+"_main", mainH264); err != nil {
+		return fmt.Errorf("go2rtc main H264 stream: %w", err)
 	}
 	if err := s.ensureGo2RTCStream(camera.ID+"_sub", camera.SubRTSP); err != nil {
 		return fmt.Errorf("go2rtc sub stream: %w", err)
