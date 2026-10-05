@@ -907,10 +907,13 @@ func (s *Server) start(camera Camera) error {
 	}
 	s.mu.Unlock()
 
-	// Browser WebRTC cannot consume the camera's H265 MAIN stream here.
-	// Use an H264 FFmpeg source for MAIN; SUB remains the direct camera stream.
+// Keep the original MAIN source for recording and expose a separate H264 source
+	// only for browsers that cannot decode the camera's H265 stream over WebRTC.
+	if err := s.ensureGo2RTCStream(camera.ID+"_main", camera.RTSP); err != nil {
+		return fmt.Errorf("go2rtc main stream: %w", err)
+	}
 	mainH264 := "ffmpeg:" + camera.RTSP + "#video=h264"
-	if err := s.ensureGo2RTCStream(camera.ID+"_main", mainH264); err != nil {
+	if err := s.ensureGo2RTCStream(camera.ID+"_main_h264", mainH264); err != nil {
 		return fmt.Errorf("go2rtc main H264 stream: %w", err)
 	}
 	if err := s.ensureGo2RTCStream(camera.ID+"_sub", camera.SubRTSP); err != nil {
@@ -1541,7 +1544,7 @@ func (s *Server) cameraWebRTC(w http.ResponseWriter,r *http.Request,id string){
 	var source string
 	switch stream {
 	case "main":
-		source=id+"_main"
+		source=id+"_main_h264"
 	case "sub":
 		source=id+"_sub"
 	default:
