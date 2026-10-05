@@ -141,13 +141,6 @@ async signout(){await fetch('/api/auth/logout',{method:'POST'});location.reload(
 async reload(){this.error='';try{this.cameras=await this.api('/api/cameras');this.sections=await this.api('/api/sections');if(this.currentUser&&this.currentUser.admin){this.allCameras=await this.api('/api/cameras?all=1');await this.loadUsers();const d=await this.api('/api/config');this.config=d}}catch(e){if(String(e.message).includes('unauthorized')){location.reload()}else{this.error=e.message}}},
 async loadUsers(){this.users=await this.api('/api/users')},
 roleName(r){return r==='admin'?'Администратор':r==='operator'?'Оператор':'Наблюдатель'},
-visibleCameras(){
-  if(this.focusedCameraId){
-    const focused=this.cameras.find(c=>c.id===this.focusedCameraId);
-    return focused?[focused]:this.cameras.slice(0,1);
-  }
-  return this.cameras.slice(0,this.gridSize);
-},
 streamFor(camera){return this.cameraStreams[camera.id]||this.defaultStream},
 setVideoRef(id,el){if(el)this.videoRefs[id]=el;else delete this.videoRefs[id]},
 focusCamera(camera){this.focusedCameraId=camera.id;this.gridSize=1;this.syncGridStreams()},
@@ -217,13 +210,13 @@ async saveCamera(){
   try{
     this.error='';
     const body={
-      IP:this.form.ip,
-      Username:this.form.username,
-      Password:this.form.password,
-      Enabled:!!this.form.enabled,
-      Autostart:!!this.form.autostart,
-      SectionID:this.form.section_id?Number(this.form.section_id):null,
-      SortOrder:Number(this.form.sort_order)||0
+      ip:this.form.ip,
+      username:this.form.username,
+      password:this.form.password,
+      enabled:!!this.form.enabled,
+      autostart:!!this.form.autostart,
+      section_id:this.form.section_id?Number(this.form.section_id):null,
+      sort_order:Number(this.form.sort_order)||0
     };
     const result=await this.api(this.editing?'/api/cameras/'+encodeURIComponent(this.editingId)+'/update':'/api/cameras',{
       method:this.editing?'PUT':'POST',
@@ -252,7 +245,13 @@ async saveUser(){try{const body={username:this.userForm.username,displayName:thi
 async removeUser(u){if(!confirm('Удалить пользователя «'+u.display_name+'»?'))return;try{await this.api('/api/users/'+u.id,{method:'DELETE'});await this.loadUsers()}catch(e){this.error=e.message}},
 async saveConfig(){try{this.config.motion_post_seconds=Number(this.config.motion_post_seconds)||0;await this.api('/api/config',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({RecordingDir:this.config.recording_dir,MotionPostSeconds:this.config.motion_post_seconds})});alert('Настройки сохранены')}catch(e){this.error=e.message}}
 },
-computed:{},
+computed:{visibleCameras(){
+  if(this.focusedCameraId){
+    const focused=this.cameras.find(c=>c.id===this.focusedCameraId);
+    return focused?[focused]:this.cameras.slice(0,1);
+  }
+  return this.cameras.slice(0,this.gridSize);
+}},
 mounted(){
   window.addEventListener('keydown',e=>{if(e.key==='Escape'&&this.focusedCameraId)this.clearFocus()});
   this.checkAuth().then(()=>this.$nextTick(()=>this.syncGridStreams()));
