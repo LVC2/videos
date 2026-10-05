@@ -1498,8 +1498,20 @@ func (s *Server) configAPI(w http.ResponseWriter,r *http.Request){
 
 func (s *Server) cameraWebRTC(w http.ResponseWriter,r *http.Request,id string){
 	camera,ok:=s.findCamera(id);if !ok{http.Error(w,"camera not found",404);return}
+	stream:=strings.ToLower(strings.TrimSpace(r.URL.Query().Get("stream")))
+	if stream==""{stream="sub"}
+	var source string
+	switch stream {
+	case "main":
+		source=id+"_main"
+	case "sub":
+		source=id+"_sub"
+	default:
+		http.Error(w,"stream must be main or sub",http.StatusBadRequest)
+		return
+	}
 	body,err:=io.ReadAll(io.LimitReader(r.Body,1024*1024));if err!=nil{http.Error(w,err.Error(),400);return}
-	u:=s.cfg.Go2RTC+"/api/webrtc?src="+url.QueryEscape(id+"_sub")
+	u:=s.cfg.Go2RTC+"/api/webrtc?src="+url.QueryEscape(source)
 	req,err:=http.NewRequestWithContext(r.Context(),http.MethodPost,u,strings.NewReader(string(body)));if err!=nil{http.Error(w,err.Error(),500);return}
 	req.Header.Set("Content-Type","application/sdp")
 	resp,err:=s.http.Do(req);if err!=nil{http.Error(w,err.Error(),502);return};defer resp.Body.Close()
