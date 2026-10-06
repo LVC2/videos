@@ -17,13 +17,13 @@
 .camera-tile{position:relative;min-width:0;min-height:0;background:#000;overflow:hidden;cursor:pointer;border:1px solid #171a1f}.camera-tile:hover{border-color:#30363f}.camera-tile video{position:absolute;inset:0;width:100%;height:100%;display:block;background:#000;object-fit:contain}
 .tile-top,.tile-bottom{position:absolute;left:0;right:0;display:flex;align-items:center;gap:6px;padding:7px;pointer-events:none;transition:opacity .15s}.tile-top{top:0;background:linear-gradient(180deg,rgba(0,0,0,.82),rgba(0,0,0,0))}.tile-bottom{bottom:0;background:linear-gradient(0deg,rgba(0,0,0,.88),rgba(0,0,0,0))}.camera-tile:not(:hover) .tile-bottom{opacity:.3}
 .tile-title{min-width:0;font-size:11px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-shadow:0 1px 3px #000}.tile-badge{display:inline-flex;align-items:center;gap:5px;padding:3px 6px;border-radius:4px;background:rgba(0,0,0,.55);font-size:9px;text-transform:uppercase;letter-spacing:.04em;border:1px solid rgba(255,255,255,.09);white-space:nowrap}.dot{width:6px;height:6px;border-radius:50%;background:var(--good);box-shadow:0 0 7px rgba(67,209,125,.6)}.dot.off{background:var(--bad);box-shadow:none}.tile-controls{margin-left:auto;display:flex;gap:3px;pointer-events:auto}
-.stream-btn{min-width:36px;height:24px;padding:0 6px;border-radius:4px;border:1px solid rgba(255,255,255,.16);background:rgba(0,0,0,.65);color:#adb6c1;font-size:9px;font-weight:700;cursor:pointer}.stream-btn.active{background:#234d68;border-color:#4e84a7;color:#fff}.tile-error{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;padding:18px;text-align:center;color:#89939f;font-size:12px;background:#050607}
-.monitor-filterbar{height:40px;display:flex;align-items:center;gap:8px;padding:0 8px;background:#0b0d10;border-bottom:1px solid #1b1f24;z-index:20}.monitor-select{min-width:220px;height:30px;padding:4px 9px;background:#101419;border:1px solid #30363e;border-radius:5px;color:var(--text);font-size:11px}.monitor-toolbar{height:44px;display:flex;align-items:center;gap:8px;padding:0 8px;background:#0b0d10;border-top:1px solid #1b1f24;z-index:20}.toolbar-group{display:flex;align-items:center;gap:3px}.toolbar-label{font-size:10px;color:#6f7883;margin:0 4px}.grid-button{min-width:31px;height:28px;min-height:28px;padding:0 7px;font-size:10px;border-radius:4px}.toolbar-spacer{flex:1}.status-line{font-size:10px;color:#707984;white-space:nowrap}.empty-monitor{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#64707d;font-size:13px}
+.stream-btn{min-width:36px;height:24px;padding:0 6px;border-radius:4px;border:1px solid rgba(255,255,255,.16);background:rgba(0,0,0,.65);color:#adb6c1;font-size:9px;font-weight:700;cursor:pointer}.rec-state{font-weight:800}.rec-on{color:var(--good)}.rec-off{color:#87919d}.camera-open-btn{min-width:48px}.stream-btn.active{background:#234d68;border-color:#4e84a7;color:#fff}.tile-error{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;padding:18px;text-align:center;color:#89939f;font-size:12px;background:#050607}
+.monitor-filterbar{height:40px;display:flex;align-items:center;gap:8px;padding:0 8px;background:#0b0d10;border-bottom:1px solid #1b1f24;z-index:20}.monitor-select{min-width:220px;height:30px;padding:4px 9px;background:#101419;border:1px solid #30363e;border-radius:5px;color:var(--text);font-size:11px}.monitor-toolbar{height:44px;display:flex;align-items:center;gap:8px;padding:0 8px;background:#0b0d10;border-top:1px solid #1b1f24;z-index:20}.toolbar-group{display:flex;align-items:center;gap:3px}.toolbar-label{font-size:10px;color:#6f7883;margin:0 4px}.grid-button{min-width:31px;height:28px;min-height:28px;padding:0 7px;font-size:10px;border-radius:4px}.toolbar-spacer{flex:1}.status-line{font-size:10px;color:#707984;white-space:nowrap}.empty-monitor{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#64707d;font-size:13px}.archive-layout{display:grid;grid-template-columns:300px minmax(0,1fr);gap:12px}.archive-list{max-height:58vh;overflow:auto;border:1px solid #242930;border-radius:7px}.archive-item{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:9px 10px;border-bottom:1px solid #20252b}.archive-item:last-child{border-bottom:0}.archive-item.active{background:#172433}.archive-item button{flex:0 0 auto}.archive-player{background:#000;border:1px solid #242930;border-radius:7px;overflow:hidden;min-height:360px;display:flex;align-items:center;justify-content:center}.archive-player video{width:100%;max-height:70vh;background:#000}.archive-empty{padding:20px;text-align:center;color:#7f8994}
 .manage{height:calc(100vh - 46px);overflow:auto;padding:18px;max-width:1500px;margin:0 auto}.panel{background:#0d0f12;border:1px solid #1e2329;border-radius:8px;overflow:hidden}.panel-head,.head{min-height:48px;display:flex;align-items:center;justify-content:space-between;gap:10px;padding:11px 14px;border-bottom:1px solid #20252b}.actions{display:flex;align-items:center;gap:5px;flex-wrap:wrap}.error{color:#ff929d;padding:10px 12px;font-size:12px}
 .modal-backdrop{position:fixed;inset:0;background:rgba(0,0,0,.78);display:flex;align-items:center;justify-content:center;padding:14px;z-index:50}.modal{width:min(760px,100%);max-height:92vh;overflow:auto;background:#101317;border:1px solid #2b3138;border-radius:9px;box-shadow:0 24px 80px rgba(0,0,0,.65)}.modal-head{padding:13px 15px;border-bottom:1px solid #242930;display:flex;justify-content:space-between;align-items:center}.form{padding:16px;display:grid;grid-template-columns:1fr 1fr;gap:13px}.field{display:flex;flex-direction:column;gap:6px}.full{grid-column:1/-1}label{font-size:11px;color:#929dad}input,select{width:100%;background:#090b0e;border:1px solid #30363e;color:var(--text);border-radius:5px;padding:9px;min-height:38px}.checks{display:flex;gap:20px;flex-wrap:wrap}.checks label,.check-item{display:flex;gap:7px;align-items:center}.checks input,.check-item input{width:auto;min-height:0}.box-list{border:1px solid #30363e;border-radius:6px;padding:10px;max-height:190px;overflow:auto;display:grid;gap:8px}.modal-foot{padding:12px 15px;border-top:1px solid #242930;display:flex;justify-content:flex-end;gap:7px}
 .auth{height:100vh;display:flex;align-items:center;justify-content:center;padding:20px;background:#050608}.auth-card{width:min(420px,100%);background:#0d0f12;border:1px solid #242930;border-radius:9px;padding:24px}.auth-card h1{margin-top:0}.auth-card .field{margin-bottom:13px}.auth-card .btn{width:100%}table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:11px 12px;border-bottom:1px solid #20252b;font-size:12px}th{color:#7f8994;font-weight:600}.row-actions{display:flex;gap:5px;justify-content:flex-end}
 .scanner{padding:14px}.scanner-form{display:flex;gap:8px;align-items:end;flex-wrap:wrap}.scanner-form .field{min-width:230px}.scan-results{margin-top:12px;border:1px solid #242930;border-radius:7px;overflow:hidden}.scan-item{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 12px;border-bottom:1px solid #20252b}.scan-item:last-child{border-bottom:0}.port-badges{display:flex;gap:6px;flex-wrap:wrap}.port-badge{padding:4px 7px;border-radius:5px;background:#17202a;color:#b8c5d3;font-size:10px}.stream-ok{color:var(--good)}.stream-error{color:var(--bad)}
-@media(max-width:760px){body{overflow:auto}.top{height:auto;min-height:46px;flex-wrap:wrap;padding:6px 7px}.top-nav{order:3;width:100%;margin:0;overflow:auto}.top-nav .tab{flex:0 0 auto}.monitor-root{height:calc(100vh - 76px);min-height:520px}.monitor-filterbar{height:auto;min-height:40px;flex-wrap:wrap;padding:6px}.monitor-filterbar .toolbar-spacer{display:none}.monitor-select{min-width:0;max-width:100%;flex:1}.camera-grid.grid-1,.camera-grid.grid-4,.camera-grid.grid-6,.camera-grid.grid-9,.camera-grid.grid-16,.camera-grid.grid-32,.camera-grid.grid-64,.camera-grid.grid-128{grid-template-columns:1fr!important;grid-template-rows:none!important;overflow:auto}.camera-tile{aspect-ratio:16/10}.monitor-toolbar{height:auto;min-height:44px;flex-wrap:wrap;padding:6px}.status-line{display:none}.manage{height:auto;min-height:calc(100vh - 76px);padding:10px}.form{grid-template-columns:1fr}.full{grid-column:auto}table{display:block;overflow-x:auto;white-space:nowrap}}
+@media(max-width:760px){body{overflow:auto}.top{height:auto;min-height:46px;flex-wrap:wrap;padding:6px 7px}.top-nav{order:3;width:100%;margin:0;overflow:auto}.top-nav .tab{flex:0 0 auto}.monitor-root{height:calc(100vh - 76px);min-height:520px}.monitor-filterbar{height:auto;min-height:40px;flex-wrap:wrap;padding:6px}.monitor-filterbar .toolbar-spacer{display:none}.monitor-select{min-width:0;max-width:100%;flex:1}.archive-layout{grid-template-columns:1fr}.archive-player{min-height:240px}.camera-grid.grid-1,.camera-grid.grid-4,.camera-grid.grid-6,.camera-grid.grid-9,.camera-grid.grid-16,.camera-grid.grid-32,.camera-grid.grid-64,.camera-grid.grid-128{grid-template-columns:1fr!important;grid-template-rows:none!important;overflow:auto}.camera-tile{aspect-ratio:16/10}.monitor-toolbar{height:auto;min-height:44px;flex-wrap:wrap;padding:6px}.status-line{display:none}.manage{height:auto;min-height:calc(100vh - 76px);padding:10px}.form{grid-template-columns:1fr}.full{grid-column:auto}table{display:block;overflow-x:auto;white-space:nowrap}}
 </style>
 </head>
 <body>
@@ -54,6 +54,7 @@
       <div class="brand">VIDEO CORE</div>
       <div class="top-nav">
         <button class="tab" :class="{active:tab==='live'}" @click="tab='live'">Монитор</button>
+        <button class="tab" :class="{active:tab==='dvr'}" @click="tab='dvr'">DVR</button>
         <button v-if="currentUser.admin" class="tab" :class="{active:tab==='cameras'}" @click="tab='cameras'">Камеры</button>
         <button v-if="currentUser.admin" class="tab" :class="{active:tab==='sections'}" @click="tab='sections'">Разделы</button>
         <button v-if="currentUser.admin" class="tab" :class="{active:tab==='users'}" @click="tab='users'">Пользователи</button>
@@ -77,13 +78,14 @@
             <div v-if="liveErrors[camera.id]" class="tile-error">{{liveErrors[camera.id]}}</div>
             <div class="tile-top">
               <div class="tile-badge"><span class="dot" :class="{off:!camera.running || !camera.stream_ok}"></span><span class="tile-title">{{camera.name}}</span></div>
-              <span v-if="camera.recording" class="tile-badge">● REC</span>
+              <span class="tile-badge rec-state" :class="camera.recording?'rec-on':'rec-off'">{{camera.recording?'● REC':'○ НЕТ ЗАПИСИ'}}</span>
             </div>
             <div class="tile-bottom">
               <span class="tile-badge">{{streamFor(camera)==='main'?'MAIN':'SUB'}}</span>
               <div class="tile-controls">
                 <button class="stream-btn" :class="{active:streamFor(camera)==='sub'}" @click.stop="setCameraStream(camera,'sub')">SUB</button>
                 <button class="stream-btn" :class="{active:streamFor(camera)==='main'}" @click.stop="setCameraStream(camera,'main')">MAIN</button>
+                <button class="stream-btn camera-open-btn" @click.stop="openCamera(camera)">ОТКРЫТЬ</button>
               </div>
             </div>
           </section>
@@ -98,11 +100,46 @@
       </footer>
     </main>
 
+    <main v-if="tab==='dvr'" class="manage">
+      <section class="panel">
+        <div class="panel-head">
+          <div><strong>Архив</strong><div class="muted">Записи доступны при подключённом архивном хранилище</div></div>
+        </div>
+        <div class="scanner" style="padding-bottom:6px">
+          <div class="scanner-form">
+            <div class="field" style="min-width:260px"><label>Камера</label><select v-model="archiveCameraId"><option value="">Выберите камеру</option><option v-for="camera in cameras" :key="camera.id" :value="camera.id">{{camera.name}} · {{camera.section_name||'без раздела'}}</option></select></div>
+            <div class="field"><label>Дата</label><input v-model="archiveDate" type="date"></div>
+            <button class="btn primary" :disabled="archiveBusy || !archiveCameraId" @click="loadArchive">{{archiveBusy?'Загрузка…':'Показать архив'}}</button>
+          </div>
+        </div>
+        <div v-if="archiveError" class="error">{{archiveError}}</div>
+        <div v-if="archiveCameraId" class="archive-layout" style="padding:0 14px 14px">
+          <div>
+            <div class="muted" style="padding:0 0 7px">Сегменты: {{archiveSegments.length}}</div>
+            <div class="archive-list">
+              <div v-if="!archiveSegments.length" class="archive-empty">Для этой даты записей нет.</div>
+              <div v-for="segment in archiveSegments" :key="segment.file" class="archive-item" :class="{active:archiveSelectedUrl===segment.url}">
+                <div>
+                  <strong>{{segment.name}}</strong>
+                  <div class="muted">{{formatBytes(segment.size)}}</div>
+                </div>
+                <button class="btn" @click="playArchive(segment)">▶</button>
+              </div>
+            </div>
+          </div>
+          <div class="archive-player">
+            <video v-if="archiveSelectedUrl" :src="archiveSelectedUrl" controls autoplay playsinline></video>
+            <div v-else class="archive-empty">Выберите сегмент записи.</div>
+          </div>
+        </div>
+      </section>
+    </main>
+
     <main v-if="tab==='cameras' && currentUser.admin" class="manage">
       <section class="panel">
         <div class="panel-head"><div><strong>Камеры</strong><div class="muted">101 — запись, 102 — просмотр</div></div><div class="actions"><button class="btn" @click="scanOpen=true">Сканировать сеть</button><button class="btn primary" @click="openNew">+ Добавить камеру</button></div></div>
         <table v-if="cameras.length"><thead><tr><th>Камера</th><th>Раздел</th><th>Статус</th><th>Автозапуск</th><th></th></tr></thead><tbody>
-          <tr v-for="camera in cameras" :key="camera.id"><td><strong>{{camera.name}}</strong><div class="muted">{{camera.id}}</div></td><td>{{camera.section_name||'—'}}</td><td><span :class="camera.stream_ok?'stream-ok':'stream-error'">{{camera.stream_ok?'Поток работает':(camera.running?'Нет изображения':'Остановлена')}}</span><div v-if="camera.stream_error" class="muted">{{camera.stream_error}}</div></td><td>{{camera.autostart?'Да':'Нет'}}</td><td class="row-actions"><button class="btn" @click="toggle(camera)">{{camera.running?'Стоп':'Старт'}}</button><button class="btn" @click="openEdit(camera)">Изменить</button><button class="btn danger" @click="remove(camera)">Удалить</button></td></tr>
+          <tr v-for="camera in cameras" :key="camera.id"><td><strong>{{camera.name}}</strong><div class="muted">{{camera.id}}</div></td><td>{{camera.section_name||'—'}}</td><td><span class="rec-state" :class="camera.recording?'rec-on':'rec-off'">{{camera.recording?'● REC':'○ нет записи'}}</span><div><span :class="camera.stream_ok?'stream-ok':'stream-error'">{{camera.stream_ok?'Поток работает':(camera.running?'Нет изображения':'Остановлена')}}</span><div v-if="camera.stream_error" class="muted">{{camera.stream_error}}</div></div></td><td>{{camera.autostart?'Да':'Нет'}}</td><td class="row-actions"><button class="btn" @click="toggle(camera)">{{camera.running?'Стоп':'Старт'}}</button><button class="btn" @click="openEdit(camera)">Изменить</button><button class="btn danger" @click="remove(camera)">Удалить</button></td></tr>
         </tbody></table><div v-else class="empty-list">Камеры ещё не добавлены.</div>
       </section>
     </main>
@@ -137,7 +174,7 @@
 <script>
 const {createApp}=Vue;
 createApp({
-data(){return{ready:false,authenticated:false,setupRequired:false,currentUser:null,login:{username:'',password:'',displayName:''},error:'',tab:'live',cameras:[],allCameras:[],sections:[],users:[],selectedSectionId:'',gridSize:4,defaultStream:'sub',cameraStreams:{},videoRefs:{},streamPCs:{},liveErrors:{},focusedCameraId:'',scanOpen:false,scanCIDR:'10.120.10.0/24',scanBusy:false,scanResults:[],modal:false,editing:false,editingId:'',form:{ip:'',username:'',password:'',enabled:true,autostart:true,section_id:'',sort_order:0},sectionModal:false,sectionEditing:false,sectionForm:{id:null,name:'',sort_order:0},userModal:false,userEditing:false,userEditingId:0,userForm:{username:'',displayName:'',password:'',role:'viewer',scope:'selected',sectionIDs:[],cameraIDs:[],active:true},config:{recording_dir:'',motion_post_seconds:10}}},
+data(){return{ready:false,authenticated:false,setupRequired:false,currentUser:null,login:{username:'',password:'',displayName:''},error:'',tab:'live',cameras:[],allCameras:[],sections:[],users:[],selectedSectionId:'',gridSize:4,defaultStream:'sub',archiveCameraId:'',archiveDate:new Date().toISOString().slice(0,10),archiveSegments:[],archiveSelectedUrl:'',archiveBusy:false,archiveError:'',cameraStreams:{},videoRefs:{},streamPCs:{},liveErrors:{},focusedCameraId:'',scanOpen:false,scanCIDR:'10.120.10.0/24',scanBusy:false,scanResults:[],modal:false,editing:false,editingId:'',form:{ip:'',username:'',password:'',enabled:true,autostart:true,section_id:'',sort_order:0},sectionModal:false,sectionEditing:false,sectionForm:{id:null,name:'',sort_order:0},userModal:false,userEditing:false,userEditingId:0,userForm:{username:'',displayName:'',password:'',role:'viewer',scope:'selected',sectionIDs:[],cameraIDs:[],active:true},config:{recording_dir:'',motion_post_seconds:10}}},
 methods:{
 async api(url,opt){const r=await fetch(url,opt||{});if(!r.ok){let t=await r.text();throw new Error(t||('HTTP '+r.status));}return r.json()},
 async checkAuth(){try{const d=await this.api('/api/auth/status');this.setupRequired=!!d.setup_required;this.authenticated=!!d.authenticated;this.currentUser=d.user;if(this.authenticated)await this.reload();}catch(e){this.error=e.message}finally{this.ready=true}},
@@ -150,6 +187,10 @@ roleName(r){return r==='admin'?'Администратор':r==='operator'?'Оп
 streamFor(camera){return this.cameraStreams[camera.id]||this.defaultStream},
 setVideoRef(id,el){if(el)this.videoRefs[id]=el;else delete this.videoRefs[id]},
 focusCamera(camera){this.focusedCameraId=camera.id;this.gridSize=1;this.syncGridStreams()},
+openCamera(camera){this.selectedSectionId=camera.section_id?String(camera.section_id):'';this.focusedCameraId=camera.id;this.gridSize=1;this.tab='live';this.$nextTick(()=>this.syncGridStreams())},
+formatBytes(n){const v=Number(n)||0;if(v<1024)return v+' Б';if(v<1024*1024)return (v/1024).toFixed(0)+' КБ';if(v<1024*1024*1024)return (v/1024/1024).toFixed(1)+' МБ';return (v/1024/1024/1024).toFixed(2)+' ГБ'},
+async loadArchive(){if(!this.archiveCameraId)return;try{this.archiveBusy=true;this.archiveError='';this.archiveSelectedUrl='';const d=await this.api('/api/cameras/'+encodeURIComponent(this.archiveCameraId)+'/archive?date='+encodeURIComponent(this.archiveDate));this.archiveSegments=d.items||[];if(d.storage_mounted===false)this.archiveError=d.error||'Архивное хранилище не подключено';}catch(e){this.archiveSegments=[];this.archiveError=e.message}finally{this.archiveBusy=false}},
+playArchive(segment){this.archiveSelectedUrl=segment.url},
 clearFocus(){if(this.focusedCameraId){this.focusedCameraId='';this.gridSize=4;this.syncGridStreams()}},
 async connectStream(camera,stream){
   this.closeStream(camera.id);
