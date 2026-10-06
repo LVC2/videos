@@ -912,7 +912,7 @@ func (s *Server) start(camera Camera) error {
 	if err := s.ensureGo2RTCStream(camera.ID+"_main", camera.RTSP); err != nil {
 		return fmt.Errorf("go2rtc main stream: %w", err)
 	}
-	mainH264 := "ffmpeg:" + camera.RTSP + "#video=h264"
+	mainH264 := "ffmpeg:" + camera.RTSP + "#video=h264#audio=opus"
 	if err := s.ensureGo2RTCStream(camera.ID+"_main_h264", mainH264); err != nil {
 		return fmt.Errorf("go2rtc main H264 stream: %w", err)
 	}
