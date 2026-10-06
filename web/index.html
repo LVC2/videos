@@ -197,13 +197,14 @@ async connectStream(camera,stream){
   if(!camera.running){this.liveErrors[camera.id]='Камера остановлена';return}
   const video=this.videoRefs[camera.id];
   if(!video)return;
+  this.liveErrors[camera.id]='Подключение '+(stream==='main'?'MAIN':'SUB')+'…';
   try{
     const pc=new RTCPeerConnection();
     this.streamPCs[camera.id]=pc;
     pc.ontrack=e=>{if(this.videoRefs[camera.id])this.videoRefs[camera.id].srcObject=e.streams[0]};
     pc.onconnectionstatechange=()=>{
       if(['failed','disconnected'].includes(pc.connectionState)&&this.streamPCs[camera.id]===pc){
-        this.liveErrors[camera.id]='Поток недоступен';
+        this.liveErrors[camera.id]='Поток '+(stream==='main'?'MAIN':'SUB')+' недоступен';
       }else if(pc.connectionState==='connected'&&this.streamPCs[camera.id]===pc){
         delete this.liveErrors[camera.id];
       }
@@ -226,7 +227,8 @@ async connectStream(camera,stream){
     if(this.streamPCs[camera.id]!==pc)pc.close();
   }catch(e){
     if(this.streamPCs[camera.id])delete this.streamPCs[camera.id];
-    this.liveErrors[camera.id]='Ошибка '+e.message;
+    const message=String(e&&e.message||e||'Неизвестная ошибка').replace(/^Error:\s*/,'').trim();
+    this.liveErrors[camera.id]='Ошибка подключения '+(stream==='main'?'MAIN':'SUB')+': '+(message||'неизвестная ошибка');
   }
 },
 closeStream(id){
@@ -237,14 +239,17 @@ closeStream(id){
 },
 async syncGridStreams(){
   if(this.tab!=='live'){this.closeAllStreams();return}
-  const visible=new Set(this.visibleCameras.map(c=>c.id));
-  for(const id of Object.keys(this.streamPCs))if(!visible.has(id))this.closeStream(id);
+  const visible=this.visibleCameras.slice();
+  const visibleIds=new Set(visible.map(c=>c.id));
+  for(const id of Object.keys(this.streamPCs))if(!visibleIds.has(id))this.closeStream(id);
   await this.$nextTick();
-  for(const camera of this.visibleCameras){
-    const stream=this.streamFor(camera);
-    const pc=this.streamPCs[camera.id];
-    if(!pc||pc.connectionState==='failed'||pc.connectionState==='closed')await this.connectStream(camera,stream);
-  }
+  const pending=visible
+    .filter(camera=>{
+      const pc=this.streamPCs[camera.id];
+      return !pc||pc.connectionState==='failed'||pc.connectionState==='closed';
+    })
+    .map(camera=>this.connectStream(camera,this.streamFor(camera)));
+  await Promise.allSettled(pending);
 },
 closeAllStreams(){for(const id of Object.keys(this.streamPCs))this.closeStream(id)},
 setGridSize(n){this.focusedCameraId='';this.gridSize=n;this.syncGridStreams()},
