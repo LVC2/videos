@@ -145,14 +145,6 @@ func main() {
 		http:     &http.Client{Timeout: 15 * time.Second},
 	}
 
-	for _, camera := range cameras {
-		if camera.Enabled && camera.Autostart {
-			if err := s.start(camera); err != nil {
-				log.Printf("autostart camera %s failed: %v", camera.ID, err)
-			}
-		}
-	}
-
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/health", s.health)
 	mux.HandleFunc("/api/auth/status", s.authStatus)
@@ -175,6 +167,19 @@ func main() {
 
 	log.Printf("video-core listening on %s", cfg.Listen)
 	log.Printf("go2rtc API: %s", cfg.Go2RTC)
+
+	// Start the HTTP API immediately. Camera autostart can take several seconds
+	// per camera and must not make nginx return 502 while the service boots.
+	go func() {
+		for _, camera := range cameras {
+			if camera.Enabled && camera.Autostart {
+				if err := s.start(camera); err != nil {
+					log.Printf("autostart camera %s failed: %v", camera.ID, err)
+				}
+			}
+		}
+	}()
+
 	log.Fatal(http.ListenAndServe(cfg.Listen, withHeaders(mux)))
 }
 
