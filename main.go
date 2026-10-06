@@ -722,6 +722,11 @@ func (s *Server) cameraAction(w http.ResponseWriter, r *http.Request) {
 		s.cameraWebRTC(w, r, id)
 		return
 	}
+	if action == "archive" && r.Method == http.MethodGet {
+		if !s.userCanViewCamera(user, id) { http.Error(w, "forbidden", http.StatusForbidden); return }
+		s.cameraArchive(w, r, id)
+		return
+	}
 	if action == "details" && r.Method == http.MethodGet {
 		if !user.Admin { http.Error(w, "forbidden", http.StatusForbidden); return }
 		s.cameraDetails(w, id)
@@ -1540,6 +1545,87 @@ func (s *Server) configAPI(w http.ResponseWriter,r *http.Request){
 		jsonResponse(w,map[string]any{"status":"ok","archive_dir":s.cfg.ArchiveDir,"archive_mount":s.cfg.ArchiveMount,"segment_seconds":s.cfg.SegmentSeconds,"motion_post_seconds":s.cfg.MotionPostSeconds})
 	default:w.WriteHeader(405)
 	}
+}
+
+func (s *Server) cameraArchive(w http.ResponseWriter, r *http.Request, id string) {
+	root := filepath.Join(s.cfg.ArchiveDir, id)
+	if err := s.archiveReady(); err != nil {
+		if r.URL.Query().Get("file") == "" {
+			jsonResponse(w, map[string]any{"storage_mounted": false, "date": strings.TrimSpace(r.URL.Query().Get("date")), "items": []any{}, "error": err.Error()})
+			return
+		}
+		http.Error(w, err.Error(), http.StatusServiceUnavailable)
+		return
+	}
+
+	relFile := strings.TrimSpace(r.URL.Query().Get("file"))
+	if relFile != "" {
+		relFile = filepath.Clean(relFile)
+		if filepath.IsAbs(relFile) || relFile == "." || relFile == ".." || strings.HasPrefix(relFile, ".."+string(os.PathSeparator)) {
+			http.Error(w, "invalid archive file", http.StatusBadRequest)
+			return
+		}
+		target := filepath.Join(root, relFile)
+		rel, err := filepath.Rel(root, target)
+		if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(os.PathSeparator)) {
+			http.Error(w, "invalid archive file", http.StatusBadRequest)
+			return
+		}
+		info, err := os.Stat(target)
+		if err != nil {
+			if os.IsNotExist(err) { http.NotFound(w, r); return }
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		if info.IsDir() || strings.ToLower(filepath.Ext(info.Name())) != ".mp4" {
+			http.Error(w, "archive file is not playable", http.StatusBadRequest)
+			return
+		}
+		f, err := os.Open(target)
+		if err != nil { http.Error(w, err.Error(), http.StatusInternalServerError); return }
+		defer f.Close()
+		w.Header().Set("Content-Type", "video/mp4")
+		http.ServeContent(w, r, info.Name(), info.ModTime(), f)
+		return
+	}
+
+	date := strings.TrimSpace(r.URL.Query().Get("date"))
+	if date == "" { date = time.Now().Format("2006-01-02") }
+	if _, err := time.Parse("2006-01-02", date); err != nil {
+		http.Error(w, "date must be YYYY-MM-DD", http.StatusBadRequest)
+		return
+	}
+
+	dir := filepath.Join(root, date)
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			jsonResponse(w, map[string]any{"storage_mounted": true, "date": date, "items": []any{}})
+			return
+		}
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	items := make([]map[string]any, 0, len(entries))
+	for _, entry := range entries {
+		if entry.IsDir() || strings.ToLower(filepath.Ext(entry.Name())) != ".mp4" { continue }
+		info, err := entry.Info()
+		if err != nil { continue }
+		started := info.ModTime().UTC().Format(time.RFC3339)
+		relPath := filepath.Join(date, entry.Name())
+		items = append(items, map[string]any{
+			"name": entry.Name(),
+			"file": relPath,
+			"url": "/api/cameras/" + url.PathEscape(id) + "/archive?file=" + url.QueryEscape(relPath),
+			"size": info.Size(),
+			"started": started,
+		})
+	}
+	slices.SortFunc(items, func(a, b map[string]any) int {
+		return strings.Compare(fmt.Sprint(b["name"]), fmt.Sprint(a["name"]))
+	})
+	jsonResponse(w, map[string]any{"storage_mounted": true, "date": date, "items": items})
 }
 
 func (s *Server) cameraWebRTC(w http.ResponseWriter,r *http.Request,id string){
