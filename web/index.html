@@ -14,7 +14,7 @@
 .monitor-root{height:calc(100vh - 46px);display:flex;flex-direction:column;min-height:0}.monitor-stage{flex:1;min-height:0;position:relative;background:#000;overflow:hidden}
 .camera-grid{width:100%;height:100%;display:grid;gap:2px;background:#000;grid-template-columns:repeat(var(--monitor-cols,2),minmax(0,1fr));grid-template-rows:repeat(var(--monitor-rows,2),minmax(0,1fr))}
 .camera-grid.grid-1{--monitor-cols:1;--monitor-rows:1}.camera-grid.grid-4{--monitor-cols:2;--monitor-rows:2}.camera-grid.grid-6{--monitor-cols:3;--monitor-rows:2}.camera-grid.grid-9{--monitor-cols:3;--monitor-rows:3}.camera-grid.grid-16{--monitor-cols:4;--monitor-rows:4}.camera-grid.grid-32{--monitor-cols:8;--monitor-rows:4}.camera-grid.grid-64{--monitor-cols:8;--monitor-rows:8}.camera-grid.grid-128{--monitor-cols:16;--monitor-rows:8}
-.camera-grid.focused-grid{grid-template-columns:minmax(0,3fr) minmax(0,1fr) minmax(0,1fr) minmax(0,1fr);grid-auto-flow:row}.camera-grid.focused-grid .camera-tile.focused{grid-column:1 / 3;grid-row:1 / -1}.camera-grid.focused-grid .camera-tile:not(.focused){grid-column:auto}
+.camera-grid.focused-grid{grid-template-columns:minmax(0,2fr) minmax(0,1fr) minmax(0,1fr);grid-auto-rows:minmax(110px,1fr);grid-auto-flow:row dense;gap:4px}.camera-grid.focused-grid .camera-tile.focused{grid-column:1 / 2;grid-row:1 / 3}.camera-grid.focused-grid .camera-tile:not(.focused){grid-column:auto}.camera-grid.focused-grid .camera-tile:not(.focused) .tile-title,.camera-grid.focused-grid .camera-tile:not(.focused) .rec-state{display:none}.camera-grid.focused-grid .camera-tile:not(.focused) .tile-top{padding:3px;background:none}.camera-grid.focused-grid .camera-tile:not(.focused) .tile-bottom{padding:3px;opacity:0}.camera-grid.focused-grid .camera-tile:not(.focused):hover .tile-bottom{opacity:1}.camera-grid.focused-grid .camera-tile:not(.focused) .stream-btn{min-width:28px;height:20px;padding:0 4px;font-size:8px}.camera-grid.focused-grid .camera-tile:not(.focused) .camera-open-btn{display:none}
 .camera-tile{position:relative;min-width:0;min-height:0;background:#000;overflow:hidden;cursor:pointer;border:1px solid #171a1f}.camera-tile:hover{border-color:#30363f}.camera-tile video{position:absolute;inset:0;width:100%;height:100%;display:block;background:#000;object-fit:contain}
 .tile-top,.tile-bottom{position:absolute;left:0;right:0;display:flex;align-items:center;gap:6px;padding:7px;pointer-events:none;transition:opacity .15s}.tile-top{top:0;background:linear-gradient(180deg,rgba(0,0,0,.82),rgba(0,0,0,0))}.tile-bottom{bottom:0;background:linear-gradient(0deg,rgba(0,0,0,.88),rgba(0,0,0,0))}.camera-tile:not(:hover) .tile-bottom{opacity:.3}
 .tile-title{min-width:0;font-size:11px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-shadow:0 1px 3px #000}.tile-badge{display:inline-flex;align-items:center;gap:5px;padding:3px 6px;border-radius:4px;background:rgba(0,0,0,.55);font-size:9px;text-transform:uppercase;letter-spacing:.04em;border:1px solid rgba(255,255,255,.09);white-space:nowrap}.dot{width:6px;height:6px;border-radius:50%;background:var(--good);box-shadow:0 0 7px rgba(67,209,125,.6)}.dot.off{background:var(--bad);box-shadow:none}.tile-controls{margin-left:auto;display:flex;gap:3px;pointer-events:auto}
@@ -345,21 +345,24 @@ async saveConfig(){try{this.config.motion_post_seconds=Number(this.config.motion
 computed:{
   ipCameras(){const source=this.currentUser&&this.currentUser.admin?this.allCameras:this.cameras;return source.filter(c=>c.source_type!=='dvr')},
   availableSections(){
-    const map=new Map();
+    const counts=new Map();
     for(const c of this.cameras){
-      if(!c.section_id)return;
+      if(!c.enabled || !c.section_id)continue;
       const key=String(c.section_id);
-      if(!map.has(key))map.set(key,{id:c.section_id,name:c.section_name||('Раздел '+key),count:0});
-      map.get(key).count++;
+      counts.set(key,(counts.get(key)||0)+1);
     }
-    return Array.from(map.values()).sort((a,b)=>String(a.name).localeCompare(String(b.name),'ru'));
+    return this.sections
+      .filter(s=>this.currentUser&&this.currentUser.admin ? true : counts.has(String(s.id)))
+      .map(s=>({id:s.id,name:s.name,count:counts.get(String(s.id))||0}))
+      .sort((a,b)=>String(a.name).localeCompare(String(b.name),'ru'));
   },
   sectionCameras(){
-    if(!this.selectedSectionId)return this.cameras;
-    return this.cameras.filter(c=>String(c.section_id||'')===String(this.selectedSectionId));
+    const active=this.cameras.filter(c=>c.enabled===true);
+    if(!this.selectedSectionId)return active;
+    return active.filter(c=>String(c.section_id||'')===String(this.selectedSectionId));
   },
   visibleCameras(){
-    const available=this.sectionCameras.filter(c=>c.enabled === true);
+    const available=this.sectionCameras;
     if(this.focusedCameraId){
       const focused=available.find(c=>c.id===this.focusedCameraId);
       if(!focused)return available.slice(0,this.gridSize==='all'?available.length:this.gridSize);
