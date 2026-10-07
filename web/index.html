@@ -485,7 +485,14 @@ isFavorite(id){return this.favorites.includes(String(id))},
 toggleFavorite(id){const key=String(id);if(this.isFavorite(key))this.favorites=this.favorites.filter(v=>v!==key);else this.favorites=[...this.favorites,key];localStorage.setItem('video-core-favorites',JSON.stringify(this.favorites));if(this.showOnlyFavorites)this.syncGridStreams()},
 streamFor(){return 'sub'},
 setVideoRef(id,el){if(el)this.videoRefs[id]=el;else delete this.videoRefs[id]},
-focusCamera(camera){this.focusedCameraId=camera.id;this.syncGridStreams()},
+focusCamera(camera){
+  this.focusedCameraId=camera.id;
+  this.$nextTick(()=>{
+    const stage=this.$el.querySelector('.monitor-stage');
+    if(stage)stage.scrollTo({top:0,left:0,behavior:'smooth'});
+  });
+  this.syncGridStreams();
+},
 async toggleFullscreen(event){
   const tile=event&&event.currentTarget?event.currentTarget.closest('.camera-tile'):null;
   if(!tile)return;
