@@ -206,7 +206,7 @@ roleName(r){return r==='admin'?'Администратор':r==='operator'?'Оп
 streamFor(camera){return this.cameraStreams[camera.id]||this.defaultStream},
 setVideoRef(id,el){if(el)this.videoRefs[id]=el;else delete this.videoRefs[id]},
 focusCamera(camera){this.focusedCameraId=camera.id;this.syncGridStreams()},
-openCamera(camera){this.selectedSectionId=camera.section_id?String(camera.section_id):'';this.focusedCameraId=camera.id;this.gridSize=1;this.tab='live';this.$nextTick(()=>this.syncGridStreams())},
+openCamera(camera){this.selectedSectionId=camera.section_id?String(camera.section_id):'';this.focusedCameraId=camera.id;this.tab='live';this.$nextTick(()=>this.syncGridStreams())},
 formatBytes(n){const v=Number(n)||0;if(v<1024)return v+' Б';if(v<1024*1024)return (v/1024).toFixed(0)+' КБ';if(v<1024*1024*1024)return (v/1024/1024).toFixed(1)+' МБ';return (v/1024/1024/1024).toFixed(2)+' ГБ'},
 async loadArchive(){if(!this.archiveCameraId)return;try{this.archiveBusy=true;this.archiveError='';this.archiveSelectedUrl='';const d=await this.api('/api/cameras/'+encodeURIComponent(this.archiveCameraId)+'/archive?date='+encodeURIComponent(this.archiveDate));this.archiveSegments=d.items||[];if(d.storage_mounted===false)this.archiveError=d.error||'Архивное хранилище не подключено';}catch(e){this.archiveSegments=[];this.archiveError=e.message}finally{this.archiveBusy=false}},
 playArchive(segment){this.archiveSelectedUrl=segment.url},
