@@ -2,6 +2,7 @@ USE videos;
 
 CREATE TABLE IF NOT EXISTS dvr_devices (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  section_id BIGINT UNSIGNED NULL,
   name VARCHAR(150) NOT NULL,
   ip VARCHAR(64) NOT NULL,
   username VARCHAR(150) NULL,
@@ -11,7 +12,9 @@ CREATE TABLE IF NOT EXISTS dvr_devices (
   created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
   updated_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
   PRIMARY KEY (id),
-  UNIQUE KEY uq_dvr_devices_ip (ip)
+  UNIQUE KEY uq_dvr_devices_ip (ip),
+  KEY idx_dvr_devices_section (section_id),
+  CONSTRAINT fk_dvr_devices_section FOREIGN KEY (section_id) REFERENCES sections(id) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 ALTER TABLE cameras
