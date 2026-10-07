@@ -14,6 +14,7 @@
 .monitor-root{height:calc(100vh - 46px);display:flex;flex-direction:column;min-height:0}.monitor-stage{flex:1;min-height:0;position:relative;background:#000;overflow:hidden}
 .camera-grid{width:100%;height:100%;display:grid;gap:2px;background:#000;grid-template-columns:repeat(var(--monitor-cols,2),minmax(0,1fr));grid-template-rows:repeat(var(--monitor-rows,2),minmax(0,1fr))}
 .camera-grid.grid-1{--monitor-cols:1;--monitor-rows:1}.camera-grid.grid-4{--monitor-cols:2;--monitor-rows:2}.camera-grid.grid-6{--monitor-cols:3;--monitor-rows:2}.camera-grid.grid-9{--monitor-cols:3;--monitor-rows:3}.camera-grid.grid-16{--monitor-cols:4;--monitor-rows:4}.camera-grid.grid-32{--monitor-cols:8;--monitor-rows:4}.camera-grid.grid-64{--monitor-cols:8;--monitor-rows:8}.camera-grid.grid-128{--monitor-cols:16;--monitor-rows:8}
+.camera-grid.focused-grid{grid-template-columns:minmax(0,3fr) minmax(180px,1fr)}.camera-grid.focused-grid .camera-tile.focused{grid-column:1;grid-row:1/-1}.camera-grid.focused-grid .camera-tile:not(.focused){grid-column:2}
 .camera-tile{position:relative;min-width:0;min-height:0;background:#000;overflow:hidden;cursor:pointer;border:1px solid #171a1f}.camera-tile:hover{border-color:#30363f}.camera-tile video{position:absolute;inset:0;width:100%;height:100%;display:block;background:#000;object-fit:contain}
 .tile-top,.tile-bottom{position:absolute;left:0;right:0;display:flex;align-items:center;gap:6px;padding:7px;pointer-events:none;transition:opacity .15s}.tile-top{top:0;background:linear-gradient(180deg,rgba(0,0,0,.82),rgba(0,0,0,0))}.tile-bottom{bottom:0;background:linear-gradient(0deg,rgba(0,0,0,.88),rgba(0,0,0,0))}.camera-tile:not(:hover) .tile-bottom{opacity:.3}
 .tile-title{min-width:0;font-size:11px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-shadow:0 1px 3px #000}.tile-badge{display:inline-flex;align-items:center;gap:5px;padding:3px 6px;border-radius:4px;background:rgba(0,0,0,.55);font-size:9px;text-transform:uppercase;letter-spacing:.04em;border:1px solid rgba(255,255,255,.09);white-space:nowrap}.dot{width:6px;height:6px;border-radius:50%;background:var(--good);box-shadow:0 0 7px rgba(67,209,125,.6)}.dot.off{background:var(--bad);box-shadow:none}.tile-controls{margin-left:auto;display:flex;gap:3px;pointer-events:auto}
@@ -72,8 +73,8 @@
         <div class="status-line">{{sectionCameras.length}} камер доступно · показывается до {{gridSize}}</div>
       </div>
       <section class="monitor-stage" @dblclick.self="clearFocus">
-        <div class="camera-grid" :class="'grid-'+gridSize" :style="monitorGridStyle" v-if="sectionCameras.length">
-          <section v-for="camera in visibleCameras" :key="camera.id" class="camera-tile" @dblclick.stop="focusCamera(camera)">
+        <div class="camera-grid" :class="['grid-'+gridSize, {'focused-grid':!!focusedCameraId}]" :style="monitorGridStyle" v-if="sectionCameras.length">
+          <section v-for="camera in visibleCameras" :key="camera.id" class="camera-tile" :class="{focused:camera.id===focusedCameraId}" @click.stop="focusCamera(camera)" @dblclick.stop="focusCamera(camera)">
             <video :ref="el => setVideoRef(camera.id,el)" autoplay playsinline muted></video>
             <div v-if="liveErrors[camera.id]" class="tile-error">{{liveErrors[camera.id]}}</div>
             <div class="tile-top">
@@ -96,7 +97,7 @@
         <div class="toolbar-group"><span class="toolbar-label">СЕТКА</span><button v-for="n in [1,4,6,9,16,32,64,128]" :key="n" class="btn grid-button" :class="{primary:gridSize===n}" @click="setGridSize(n)">{{n}}</button></div>
         <div class="toolbar-group"><span class="toolbar-label">ВСЕ</span><button class="btn grid-button" :class="{primary:defaultStream==='sub'}" @click="setDefaultStream('sub')">SUB</button><button class="btn grid-button" :class="{primary:defaultStream==='main'}" @click="setDefaultStream('main')">MAIN</button></div>
         <div class="toolbar-spacer"></div>
-        <div class="status-line">{{visibleCameras.length}} / {{cameras.length}} камер · двойной клик — развернуть · Esc — вернуть сетку</div>
+        <div class="status-line">{{visibleCameras.length}} / {{cameras.length}} камер · клик — увеличить · Esc — вернуть сетку</div>
       </footer>
     </main>
 
@@ -186,7 +187,7 @@ async loadUsers(){this.users=await this.api('/api/users')},
 roleName(r){return r==='admin'?'Администратор':r==='operator'?'Оператор':'Наблюдатель'},
 streamFor(camera){return this.cameraStreams[camera.id]||this.defaultStream},
 setVideoRef(id,el){if(el)this.videoRefs[id]=el;else delete this.videoRefs[id]},
-focusCamera(camera){this.focusedCameraId=camera.id;this.gridSize=1;this.syncGridStreams()},
+focusCamera(camera){this.focusedCameraId=camera.id;this.syncGridStreams()},
 openCamera(camera){this.selectedSectionId=camera.section_id?String(camera.section_id):'';this.focusedCameraId=camera.id;this.gridSize=1;this.tab='live';this.$nextTick(()=>this.syncGridStreams())},
 formatBytes(n){const v=Number(n)||0;if(v<1024)return v+' Б';if(v<1024*1024)return (v/1024).toFixed(0)+' КБ';if(v<1024*1024*1024)return (v/1024/1024).toFixed(1)+' МБ';return (v/1024/1024/1024).toFixed(2)+' ГБ'},
 async loadArchive(){if(!this.archiveCameraId)return;try{this.archiveBusy=true;this.archiveError='';this.archiveSelectedUrl='';const d=await this.api('/api/cameras/'+encodeURIComponent(this.archiveCameraId)+'/archive?date='+encodeURIComponent(this.archiveDate));this.archiveSegments=d.items||[];if(d.storage_mounted===false)this.archiveError=d.error||'Архивное хранилище не подключено';}catch(e){this.archiveSegments=[];this.archiveError=e.message}finally{this.archiveBusy=false}},
@@ -317,12 +318,17 @@ computed:{
   visibleCameras(){
     if(this.focusedCameraId){
       const focused=this.sectionCameras.find(c=>c.id===this.focusedCameraId);
-      return focused?[focused]:this.sectionCameras.slice(0,1);
+      if(!focused)return this.sectionCameras.slice(0,this.gridSize);
+      const others=this.sectionCameras.filter(c=>c.id!==focused.id).slice(0,Math.max(0,this.gridSize-1));
+      return [focused,...others];
     }
     return this.sectionCameras.slice(0,this.gridSize);
   },
   monitorGridStyle(){
     const count=this.visibleCameras.length;
+    if(this.focusedCameraId){
+      return {'--monitor-cols':2,'--monitor-rows':Math.max(1,count-1)};
+    }
     if(count<=0)return {'--monitor-cols':1,'--monitor-rows':1};
     let cols=1;
     if(count<=4)cols=2;
