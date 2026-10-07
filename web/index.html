@@ -70,7 +70,7 @@
       <div class="monitor-filterbar">
         <div class="toolbar-group"><span class="toolbar-label">РАЗДЕЛ</span><select class="monitor-select" v-model="selectedSectionId" @change="sectionChanged"><option value="">Все доступные</option><option v-for="section in availableSections" :key="section.id" :value="String(section.id)">{{section.name}} ({{section.count}})</option></select></div>
         <div class="toolbar-spacer"></div>
-        <div class="status-line">{{sectionCameras.length}} камер доступно · показывается до {{gridSize}}</div>
+        <div class="status-line">{{sectionCameras.length}} камер доступно · {{gridSize==='all'?'показываются все':('режим '+gridSize)}}</div>
       </div>
       <section class="monitor-stage" @dblclick.self="clearFocus">
         <div class="camera-grid" :class="['grid-'+gridSize, {'focused-grid':!!focusedCameraId}]" :style="monitorGridStyle" v-if="sectionCameras.length">
@@ -94,7 +94,7 @@
         <div v-else class="empty-monitor">В выбранном разделе нет доступных камер.</div>
       </section>
       <footer class="monitor-toolbar">
-        <div class="toolbar-group"><span class="toolbar-label">СЕТКА</span><button v-for="n in [1,4,6,9,16,32,64,128]" :key="n" class="btn grid-button" :class="{primary:gridSize===n}" @click="setGridSize(n)">{{n}}</button></div>
+        <div class="toolbar-group"><span class="toolbar-label">СЕТКА</span><button class="btn grid-button" :class="{primary:gridSize==='all'}" @click="setGridSize('all')">АВТО</button><button v-for="n in [1,4,6,9,16,32,64,128]" :key="n" class="btn grid-button" :class="{primary:gridSize===n}" @click="setGridSize(n)">{{n}}</button></div>
         <div class="toolbar-group"><span class="toolbar-label">ВСЕ</span><button class="btn grid-button" :class="{primary:defaultStream==='sub'}" @click="setDefaultStream('sub')">SUB</button><button class="btn grid-button" :class="{primary:defaultStream==='main'}" @click="setDefaultStream('main')">MAIN</button></div>
         <div class="toolbar-spacer"></div>
         <div class="status-line">{{visibleCameras.length}} / {{cameras.length}} камер · клик — увеличить · Esc — вернуть сетку</div>
@@ -194,7 +194,7 @@
 <script>
 const {createApp}=Vue;
 createApp({
-data(){return{ready:false,authenticated:false,setupRequired:false,currentUser:null,login:{username:'',password:'',displayName:''},error:'',tab:'live',cameras:[],allCameras:[],sections:[],users:[],dvrs:[],dvrChannels:[],dvrChannelsId:0,dvrChannelsName:'',dvrChannelsBusy:false,selectedSectionId:'',gridSize:4,defaultStream:'sub',archiveCameraId:'',archiveDate:new Date().toISOString().slice(0,10),archiveSegments:[],archiveSelectedUrl:'',archiveBusy:false,archiveError:'',cameraStreams:{},videoRefs:{},streamPCs:{},liveErrors:{},focusedCameraId:'',scanOpen:false,scanCIDR:'10.120.10.0/24',scanBusy:false,scanResults:[],modal:false,editing:false,editingId:'',form:{ip:'',username:'',password:'',enabled:true,autostart:true,section_id:'',sort_order:0},dvrModal:false,dvrEditing:false,dvrEditingId:0,dvrForm:{name:'',ip:'',username:'admin',password:'',section_id:'',channels:8,enabled:true,autostart:true,sort_order:0},sectionModal:false,sectionEditing:false,sectionForm:{id:null,name:'',sort_order:0},userModal:false,userEditing:false,userEditingId:0,userForm:{username:'',displayName:'',password:'',role:'viewer',scope:'selected',sectionIDs:[],cameraIDs:[],active:true},config:{recording_dir:'',motion_post_seconds:10}}},
+data(){return{ready:false,authenticated:false,setupRequired:false,currentUser:null,login:{username:'',password:'',displayName:''},error:'',tab:'live',cameras:[],allCameras:[],sections:[],users:[],dvrs:[],dvrChannels:[],dvrChannelsId:0,dvrChannelsName:'',dvrChannelsBusy:false,selectedSectionId:'',gridSize:'all',defaultStream:'sub',archiveCameraId:'',archiveDate:new Date().toISOString().slice(0,10),archiveSegments:[],archiveSelectedUrl:'',archiveBusy:false,archiveError:'',cameraStreams:{},videoRefs:{},streamPCs:{},liveErrors:{},focusedCameraId:'',scanOpen:false,scanCIDR:'10.120.10.0/24',scanBusy:false,scanResults:[],modal:false,editing:false,editingId:'',form:{ip:'',username:'',password:'',enabled:true,autostart:true,section_id:'',sort_order:0},dvrModal:false,dvrEditing:false,dvrEditingId:0,dvrForm:{name:'',ip:'',username:'admin',password:'',section_id:'',channels:8,enabled:true,autostart:true,sort_order:0},sectionModal:false,sectionEditing:false,sectionForm:{id:null,name:'',sort_order:0},userModal:false,userEditing:false,userEditingId:0,userForm:{username:'',displayName:'',password:'',role:'viewer',scope:'selected',sectionIDs:[],cameraIDs:[],active:true},config:{recording_dir:'',motion_post_seconds:10}}},
 methods:{
 async api(url,opt){const r=await fetch(url,opt||{});if(!r.ok){let t=await r.text();throw new Error(t||('HTTP '+r.status));}return r.json()},
 async checkAuth(){try{const d=await this.api('/api/auth/status');this.setupRequired=!!d.setup_required;this.authenticated=!!d.authenticated;this.currentUser=d.user;if(this.authenticated)await this.reload();}catch(e){this.error=e.message}finally{this.ready=true}},
@@ -211,7 +211,7 @@ openCamera(camera){this.selectedSectionId=camera.section_id?String(camera.sectio
 formatBytes(n){const v=Number(n)||0;if(v<1024)return v+' Б';if(v<1024*1024)return (v/1024).toFixed(0)+' КБ';if(v<1024*1024*1024)return (v/1024/1024).toFixed(1)+' МБ';return (v/1024/1024/1024).toFixed(2)+' ГБ'},
 async loadArchive(){if(!this.archiveCameraId)return;try{this.archiveBusy=true;this.archiveError='';this.archiveSelectedUrl='';const d=await this.api('/api/cameras/'+encodeURIComponent(this.archiveCameraId)+'/archive?date='+encodeURIComponent(this.archiveDate));this.archiveSegments=d.items||[];if(d.storage_mounted===false)this.archiveError=d.error||'Архивное хранилище не подключено';}catch(e){this.archiveSegments=[];this.archiveError=e.message}finally{this.archiveBusy=false}},
 playArchive(segment){this.archiveSelectedUrl=segment.url},
-clearFocus(){if(this.focusedCameraId){this.focusedCameraId='';this.gridSize=4;this.syncGridStreams()}},
+clearFocus(){if(this.focusedCameraId){this.focusedCameraId='';this.syncGridStreams()}},
 async connectStream(camera,stream){
   this.closeStream(camera.id);
   if(!camera.running){this.liveErrors[camera.id]='Камера остановлена';return}
@@ -345,17 +345,31 @@ computed:{
     const available=this.sectionCameras.filter(c=>c.enabled);
     if(this.focusedCameraId){
       const focused=available.find(c=>c.id===this.focusedCameraId);
-      if(!focused)return available.slice(0,this.gridSize);
-      const others=available.filter(c=>c.id!==focused.id).slice(0,Math.max(0,this.gridSize-1));
+      if(!focused)return available.slice(0,this.gridSize==='all'?available.length:this.gridSize);
+      const limit=this.gridSize==='all'?available.length:Math.max(1,this.gridSize);
+      const others=available.filter(c=>c.id!==focused.id).slice(0,Math.max(0,limit-1));
       return [focused,...others];
     }
-    return available.slice(0,this.gridSize);
+    return this.gridSize==='all'?available:available.slice(0,this.gridSize);
   },
   monitorGridStyle(){
     const count=this.visibleCameras.length;
     if(this.focusedCameraId){
       const rows=Math.max(1,Math.ceil(Math.max(0,count-1)/2));
       return {'--monitor-cols':4,'--monitor-rows':rows};
+    }
+    if(this.gridSize==='all'){
+      if(count<=0)return {'--monitor-cols':1,'--monitor-rows':1};
+      let cols=Math.ceil(Math.sqrt(count));
+      if(count<=4)cols=count===1?1:2;
+      else if(count<=9)cols=3;
+      else if(count<=16)cols=4;
+      else if(count<=25)cols=5;
+      else if(count<=36)cols=6;
+      else if(count<=64)cols=8;
+      else if(count<=100)cols=10;
+      else cols=16;
+      return {'--monitor-cols':cols,'--monitor-rows':Math.ceil(count/cols)};
     }
     const layouts={
       1:{cols:1,rows:1},
