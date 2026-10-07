@@ -779,10 +779,12 @@ func (s *Server) listCameras(w http.ResponseWriter, r *http.Request) {
 		DVRName string `json:"dvr_name,omitempty"`
 		DVRChannel int `json:"dvr_channel,omitempty"`
 	}
+	showAll := r.URL.Query().Get("all") == "1" && user.Admin
 	s.mu.RLock()
 	out := make([]item, 0, len(s.cameras))
 	for _, c := range s.cameras {
 		if !s.userCanViewCamera(user, c.ID) { continue }
+		if !showAll && !c.Enabled { continue }
 		rt := s.runtimes[c.ID]
 		it := item{
 			DBID: c.DBID, ID: c.ID, Name: c.Name, Enabled: c.Enabled, Autostart: c.Autostart,
