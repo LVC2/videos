@@ -324,12 +324,18 @@ type sectionPayload struct {
 }
 
 func (s *Server) listSections(w http.ResponseWriter, r *http.Request) {
-	if _, ok := s.requireAuth(w, r); !ok { return }
-	rows, err := s.db.Query("SELECT id, name, sort_order FROM sections WHERE is_active=1 ORDER BY sort_order, id")
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
+	user, ok := s.requireAuth(w, r); if !ok { return }
+
+	query := "SELECT s.id, s.name, s.sort_order FROM sections s WHERE s.is_active=1"
+	args := []any{}
+	if !user.Admin {
+		query += " AND EXISTS (SELECT 1 FROM user_sections us WHERE us.user_id=? AND us.section_id=s.id AND us.can_view=1) OR EXISTS (SELECT 1 FROM user_cameras uc JOIN cameras c ON c.id=uc.camera_id WHERE uc.user_id=? AND uc.can_view=1 AND c.section_id=s.id AND c.enabled=1)"
+		args = []any{user.ID, user.ID}
 	}
+	query += " ORDER BY s.sort_order, s.id"
+
+	rows, err := s.db.Query(query, args...)
+	if err != nil { http.Error(w, err.Error(), http.StatusInternalServerError); return }
 	defer rows.Close()
 
 	type item struct {
@@ -340,16 +346,10 @@ func (s *Server) listSections(w http.ResponseWriter, r *http.Request) {
 	out := make([]item, 0)
 	for rows.Next() {
 		var it item
-		if err := rows.Scan(&it.ID, &it.Name, &it.SortOrder); err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
+		if err := rows.Scan(&it.ID, &it.Name, &it.SortOrder); err != nil { http.Error(w, err.Error(), http.StatusInternalServerError); return }
 		out = append(out, it)
 	}
-	if err := rows.Err(); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
+	if err := rows.Err(); err != nil { http.Error(w, err.Error(), http.StatusInternalServerError); return }
 	jsonResponse(w, out)
 }
 
