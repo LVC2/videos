@@ -202,7 +202,7 @@
 <script>
 const {createApp}=Vue;
 createApp({
-data(){return{ready:false,authenticated:false,setupRequired:false,currentUser:null,login:{username:'',password:'',displayName:''},error:'',tab:'live',cameras:[],allCameras:[],sections:[],users:[],dvrs:[],dvrChannels:[],dvrChannelsId:0,dvrChannelsName:'',dvrChannelsBusy:false,selectedSectionId:'',gridSize:'all',defaultStream:'main',archiveCameraId:'',archiveDate:new Date().toISOString().slice(0,10),archiveSegments:[],archiveSelectedUrl:'',archiveBusy:false,archiveError:'',cameraStreams:{},videoRefs:{},streamPCs:{},liveErrors:{},focusedCameraId:'',scanOpen:false,scanCIDR:'10.120.10.0/24',scanBusy:false,scanResults:[],modal:false,editing:false,editingId:'',form:{ip:'',username:'',password:'',enabled:true,autostart:true,section_id:'',sort_order:0},dvrModal:false,dvrEditing:false,dvrEditingId:0,dvrForm:{name:'',ip:'',username:'admin',password:'',section_id:'',channels:16,enabled:true,autostart:true,sort_order:0},sectionModal:false,sectionEditing:false,sectionForm:{id:null,name:'',sort_order:0},userModal:false,userEditing:false,userEditingId:0,userForm:{username:'',displayName:'',password:'',role:'viewer',scope:'selected',sectionIDs:[],cameraIDs:[],active:true},config:{recording_dir:'',motion_post_seconds:10}}},
+data(){return{ready:false,authenticated:false,setupRequired:false,currentUser:null,login:{username:'',password:'',displayName:''},error:'',tab:'live',cameras:[],allCameras:[],sections:[],users:[],dvrs:[],dvrChannels:[],dvrChannelsId:0,dvrChannelsName:'',dvrChannelsBusy:false,selectedSectionId:'',gridSize:'all',defaultStream:'sub',archiveCameraId:'',archiveDate:new Date().toISOString().slice(0,10),archiveSegments:[],archiveSelectedUrl:'',archiveBusy:false,archiveError:'',cameraStreams:{},videoRefs:{},streamPCs:{},liveErrors:{},focusedCameraId:'',scanOpen:false,scanCIDR:'10.120.10.0/24',scanBusy:false,scanResults:[],modal:false,editing:false,editingId:'',form:{ip:'',username:'',password:'',enabled:true,autostart:true,section_id:'',sort_order:0},dvrModal:false,dvrEditing:false,dvrEditingId:0,dvrForm:{name:'',ip:'',username:'admin',password:'',section_id:'',channels:16,enabled:true,autostart:true,sort_order:0},sectionModal:false,sectionEditing:false,sectionForm:{id:null,name:'',sort_order:0},userModal:false,userEditing:false,userEditingId:0,userForm:{username:'',displayName:'',password:'',role:'viewer',scope:'selected',sectionIDs:[],cameraIDs:[],active:true},config:{recording_dir:'',motion_post_seconds:10}}},
 methods:{
 async api(url,opt){const r=await fetch(url,opt||{});if(!r.ok){let t=await r.text();throw new Error(t||('HTTP '+r.status));}return r.json()},
 async checkAuth(){try{const d=await this.api('/api/auth/status');this.setupRequired=!!d.setup_required;this.authenticated=!!d.authenticated;this.currentUser=d.user;if(this.authenticated)await this.reload();}catch(e){this.error=e.message}finally{this.ready=true}},
@@ -212,7 +212,7 @@ async signout(){await fetch('/api/auth/logout',{method:'POST'});location.reload(
 async reload(){this.error='';try{this.cameras=await this.api('/api/cameras');this.sections=await this.api('/api/sections');if(this.currentUser&&this.currentUser.admin){this.allCameras=await this.api('/api/cameras?all=1');this.dvrs=await this.api('/api/dvrs');await this.loadUsers();const d=await this.api('/api/config');this.config=d}}catch(e){if(String(e.message).includes('unauthorized')){location.reload()}else{this.error=e.message}}},
 async loadUsers(){this.users=await this.api('/api/users')},
 roleName(r){return r==='admin'?'Администратор':r==='operator'?'Оператор':'Наблюдатель'},
-streamFor(){return 'main'},
+streamFor(){return 'sub'},
 setVideoRef(id,el){if(el)this.videoRefs[id]=el;else delete this.videoRefs[id]},
 focusCamera(camera){this.focusedCameraId=camera.id;this.syncGridStreams()},
 async toggleFullscreen(event){
@@ -290,8 +290,8 @@ async syncGridStreams(){
 closeAllStreams(){for(const id of Object.keys(this.streamPCs))this.closeStream(id)},
 setGridSize(n){this.focusedCameraId='';this.gridSize=n;this.syncGridStreams()},
 sectionChanged(){this.focusedCameraId='';this.syncGridStreams()},
-setDefaultStream(){this.defaultStream='main';this.syncGridStreams()},
-setCameraStream(camera){this.connectStream(camera,'main')},
+setDefaultStream(){this.defaultStream='sub';this.syncGridStreams()},
+setCameraStream(camera){this.connectStream(camera,'sub')},
 scopeName(s){return s==='all_cameras'?'Все камеры':s==='section'?'Раздел':s==='none'?'Нет доступа':'Отдельные камеры'},
 emptyCamera(){return{ip:'',username:'',password:'',enabled:true,autostart:true,section_id:'',sort_order:0}},
 openDvrChannels(d){this.dvrChannelsId=d.id;this.dvrChannelsName=d.name;this.dvrChannels=[];this.dvrChannelsBusy=true;this.api('/api/dvrs/'+d.id+'/channels').then(v=>this.dvrChannels=v||[]).catch(e=>this.error='Не удалось загрузить каналы: '+e.message).finally(()=>this.dvrChannelsBusy=false)},
