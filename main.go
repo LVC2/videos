@@ -570,7 +570,8 @@ func (s *Server) dvrAction(w http.ResponseWriter, r *http.Request) {
 		var sectionID any;if p.SectionID!=nil&&*p.SectionID>0{sectionID=*p.SectionID}
 		res,err:=s.db.Exec("UPDATE dvr_devices SET section_id=?,name=?,ip=?,username=?,password=CASE WHEN ?<>'' THEN ? ELSE password END,enabled=?,sort_order=?,channel_count=? WHERE id=?",sectionID,p.Name,p.IP,p.Username,p.Password,p.Password,enabled,sortOrder,channels,id)
 		if err!=nil{http.Error(w,err.Error(),409);return};if n,_:=res.RowsAffected();n==0{http.Error(w,"DVR not found",404);return}
-		_,_=s.db.Exec("UPDATE cameras SET section_id=?,name=CONCAT(?, ' / CH', LPAD(dvr_channel,2,'0')),enabled=CASE WHEN dvr_channel<=? THEN ? ELSE 0 END,autostart=? WHERE dvr_device_id=? AND source_type='dvr'",sectionID,p.Name,channels,enabled,autostart,id)
+		_,_=s.db.Exec("UPDATE cameras SET section_id=?,name=CONCAT(?, ' / CH', LPAD(dvr_channel,2,'0')),autostart=? WHERE dvr_device_id=? AND source_type='dvr'",sectionID,p.Name,autostart,id)
+		_,_=s.db.Exec("UPDATE cameras SET enabled=0 WHERE dvr_device_id=? AND source_type='dvr' AND dvr_channel>?",id,channels)
 		var dvrIP,dvrUser,dvrPass string
 		if err:=s.db.QueryRow("SELECT ip,COALESCE(username,''),COALESCE(password,'') FROM dvr_devices WHERE id=?",id).Scan(&dvrIP,&dvrUser,&dvrPass);err==nil&&dvrIP!=""{
 			for ch:=1;ch<=channels;ch++{
