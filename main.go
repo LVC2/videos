@@ -522,7 +522,43 @@ func (s *Server) createDVR(w http.ResponseWriter, r *http.Request) {
 func (s *Server) dvrAction(w http.ResponseWriter, r *http.Request) {
 	user,ok:=s.requireAuth(w,r);if !ok{return}
 	if !user.Admin{http.Error(w,"forbidden",http.StatusForbidden);return}
-	idText:=strings.TrimPrefix(r.URL.Path,"/api/dvrs/");if idText==""||strings.Contains(idText,"/"){http.Error(w,"invalid dvr id",400);return}
+	path:=strings.TrimPrefix(r.URL.Path,"/api/dvrs/")
+	if strings.HasSuffix(path,"/channels"){
+		idText:=strings.TrimSuffix(path,"/channels")
+		var id int64
+		if _,err:=fmt.Sscanf(idText,"%d",&id);err!=nil||id<=0{http.Error(w,"invalid dvr id",400);return}
+		switch r.Method{
+		case http.MethodGet:
+			rows,err:=s.db.Query("SELECT id, dvr_channel, name, enabled, sort_order FROM cameras WHERE dvr_device_id=? AND source_type='dvr' ORDER BY dvr_channel,id",id)
+			if err!=nil{http.Error(w,err.Error(),500);return}
+			defer rows.Close()
+			type channelItem struct{ID int64 `json:"id"`;Channel int `json:"channel"`;Name string `json:"name"`;Enabled bool `json:"enabled"`;SortOrder int `json:"sort_order"`}
+			out:=make([]channelItem,0)
+			for rows.Next(){var it channelItem;if err:=rows.Scan(&it.ID,&it.Channel,&it.Name,&it.Enabled,&it.SortOrder);err!=nil{http.Error(w,err.Error(),500);return};out=append(out,it)}
+			if err:=rows.Err();err!=nil{http.Error(w,err.Error(),500);return}
+			jsonResponse(w,out);return
+		case http.MethodPut:
+			var p struct{Channel int `json:"channel"`;Enabled bool `json:"enabled"`}
+			if err:=decodeJSON(r,&p);err!=nil{http.Error(w,err.Error(),400);return}
+			res,err:=s.db.Exec("UPDATE cameras SET enabled=? WHERE dvr_device_id=? AND source_type='dvr' AND dvr_channel=?",p.Enabled,id,p.Channel)
+			if err!=nil{http.Error(w,err.Error(),500);return}
+			if n,_:=res.RowsAffected();n==0{http.Error(w,"channel not found",404);return}
+			var slug string
+			if err:=s.db.QueryRow("SELECT slug FROM cameras WHERE dvr_device_id=? AND source_type='dvr' AND dvr_channel=?",id,p.Channel).Scan(&slug);err==nil{
+				if !p.Enabled{s.stop(slug)}else{
+					var autostart bool
+					if err:=s.db.QueryRow("SELECT autostart FROM cameras WHERE slug=?",slug).Scan(&autostart);err==nil&&autostart{
+						if cam,ok:=s.findCamera(slug);ok{if err:=s.start(cam);err!=nil{log.Printf("DVR channel %s start failed: %v",slug,err)}}
+					}
+				}
+			}
+			jsonResponse(w,map[string]any{"status":"ok","channel":p.Channel,"enabled":p.Enabled});return
+		default:
+			w.WriteHeader(http.StatusMethodNotAllowed);return
+		}
+	}
+	idText:=path
+	if idText==""||strings.Contains(idText,"/"){http.Error(w,"invalid dvr id",400);return}
 	var id int64;if _,err:=fmt.Sscanf(idText,"%d",&id);err!=nil||id<=0{http.Error(w,"invalid dvr id",400);return}
 	switch r.Method{
 	case http.MethodPut:
