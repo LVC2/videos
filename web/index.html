@@ -279,7 +279,24 @@ setCameraStream(camera,stream){this.cameraStreams[camera.id]=stream;this.connect
 scopeName(s){return s==='all_cameras'?'Все камеры':s==='section'?'Раздел':s==='none'?'Нет доступа':'Отдельные камеры'},
 emptyCamera(){return{ip:'',username:'',password:'',enabled:true,autostart:true,section_id:'',sort_order:0}},
 openDvrChannels(d){this.dvrChannelsId=d.id;this.dvrChannelsName=d.name;this.dvrChannels=[];this.dvrChannelsBusy=true;this.api('/api/dvrs/'+d.id+'/channels').then(v=>this.dvrChannels=v||[]).catch(e=>this.error='Не удалось загрузить каналы: '+e.message).finally(()=>this.dvrChannelsBusy=false)},
-async toggleDvrChannel(channel){try{await this.api('/api/dvrs/'+this.dvrChannelsId+'/channels',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({channel:channel.channel,enabled:!channel.enabled})});channel.enabled=!channel.enabled;await this.reload()}catch(e){this.error='Не удалось изменить канал CH'+String(channel.channel).padStart(2,'0')+': '+e.message}},
+async toggleDvrChannel(channel){
+  try{
+    const enabled=!channel.enabled;
+    const result=await this.api('/api/dvrs/'+this.dvrChannelsId+'/channels',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({channel:channel.channel,enabled})});
+    channel.enabled=enabled;
+    if(result&&result.camera_id){
+      const camera=this.cameras.find(c=>c.id===result.camera_id);
+      if(camera)camera.enabled=enabled;
+      if(!enabled){
+        this.closeStream(result.camera_id);
+        delete this.liveErrors[result.camera_id];
+      }
+    }
+    await this.reload();
+  }catch(e){
+    this.error='Не удалось изменить канал CH'+String(channel.channel).padStart(2,'0')+': '+e.message
+  }
+},
 openDvrNew(){this.error='';this.dvrEditing=false;this.dvrEditingId=0;this.dvrForm={name:'',ip:'',username:'admin',password:'',section_id:'',channels:16,enabled:true,autostart:true,sort_order:0};this.dvrModal=true},
 async openDvrEdit(d){this.error='';this.dvrEditing=true;this.dvrEditingId=d.id;this.dvrForm={name:d.name||'',ip:d.ip||'',username:d.username||'',password:'',section_id:d.section_id?String(d.section_id):'',channels:d.channels||16,enabled:!!d.enabled,autostart:true,sort_order:d.sort_order||0};this.dvrModal=true},
 async saveDvr(){try{this.error='';const body={name:this.dvrForm.name,ip:this.dvrForm.ip,username:this.dvrForm.username,password:this.dvrForm.password,section_id:this.dvrForm.section_id?Number(this.dvrForm.section_id):null,enabled:!!this.dvrForm.enabled,autostart:!!this.dvrForm.autostart,sort_order:Number(this.dvrForm.sort_order)||0};body.channels=Math.max(1,Math.min(32,Number(this.dvrForm.channels)||16));await this.api(this.dvrEditing?('/api/dvrs/'+this.dvrEditingId):'/api/dvrs',{method:this.dvrEditing?'PUT':'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});this.dvrModal=false;await this.reload();this.tab='dvr'}catch(e){this.error='Не удалось сохранить DVR: '+e.message}},
@@ -342,7 +359,7 @@ computed:{
     return this.cameras.filter(c=>String(c.section_id||'')===String(this.selectedSectionId));
   },
   visibleCameras(){
-    const available=this.sectionCameras.filter(c=>c.enabled);
+    const available=this.sectionCameras.filter(c=>c.enabled === true);
     if(this.focusedCameraId){
       const focused=available.find(c=>c.id===this.focusedCameraId);
       if(!focused)return available.slice(0,this.gridSize==='all'?available.length:this.gridSize);
