@@ -457,7 +457,7 @@ func (s *Server) dvrsAPI(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) listDVRs(w http.ResponseWriter, r *http.Request) {
-	rows, err := s.db.Query(`SELECT d.id,d.name,d.ip,COALESCE(d.username,''),d.enabled,d.sort_order,d.section_id,COALESCE(s.name,''),COUNT(c.id)
+	rows, err := s.db.Query(`SELECT d.id,d.name,d.ip,COALESCE(d.username,''),d.enabled,d.sort_order,d.section_id,COALESCE(s.name,''),d.channel_count
 		FROM dvr_devices d
 		LEFT JOIN sections s ON s.id=d.section_id
 		LEFT JOIN cameras c ON c.dvr_device_id=d.id AND c.source_type='dvr'
@@ -498,7 +498,7 @@ func (s *Server) createDVR(w http.ResponseWriter, r *http.Request) {
 	var sectionID any;if p.SectionID!=nil&&*p.SectionID>0{sectionID=*p.SectionID}
 
 	tx,err:=s.db.Begin();if err!=nil{http.Error(w,err.Error(),500);return};defer tx.Rollback()
-	res,err:=tx.Exec("INSERT INTO dvr_devices (section_id,name,ip,username,password,enabled,sort_order) VALUES (?,?,?,?,?,?,?)",sectionID,p.Name,p.IP,p.Username,p.Password,enabled,sortOrder);if err!=nil{http.Error(w,err.Error(),409);return}
+	res,err:=tx.Exec("INSERT INTO dvr_devices (section_id,name,ip,username,password,enabled,sort_order,channel_count) VALUES (?,?,?,?,?,?,?,?)",sectionID,p.Name,p.IP,p.Username,p.Password,enabled,sortOrder,channels);if err!=nil{http.Error(w,err.Error(),409);return}
 	dvrID,err:=res.LastInsertId();if err!=nil{http.Error(w,err.Error(),500);return}
 	for ch:=1;ch<=channels;ch++{
 		slug:=fmt.Sprintf("dvr-%d-ch-%02d",dvrID,ch)
@@ -566,10 +566,22 @@ func (s *Server) dvrAction(w http.ResponseWriter, r *http.Request) {
 		p.Name=strings.TrimSpace(p.Name);p.IP=strings.TrimSpace(p.IP);p.Username=strings.TrimSpace(p.Username)
 		if p.Name==""||net.ParseIP(p.IP)==nil||p.Username==""{http.Error(w,"name, ip and username are required",400);return}
 		enabled,autostart,sortOrder:=payloadDefaults(cameraPayload{Enabled:p.Enabled,Autostart:p.Autostart,SortOrder:p.SortOrder})
+		channels:=16;if p.Channels!=nil&&*p.Channels>0{channels=*p.Channels};if channels>32{channels=32}
 		var sectionID any;if p.SectionID!=nil&&*p.SectionID>0{sectionID=*p.SectionID}
-		res,err:=s.db.Exec("UPDATE dvr_devices SET section_id=?,name=?,ip=?,username=?,password=CASE WHEN ?<>'' THEN ? ELSE password END,enabled=?,sort_order=? WHERE id=?",sectionID,p.Name,p.IP,p.Username,p.Password,p.Password,enabled,sortOrder,id)
+		res,err:=s.db.Exec("UPDATE dvr_devices SET section_id=?,name=?,ip=?,username=?,password=CASE WHEN ?<>'' THEN ? ELSE password END,enabled=?,sort_order=?,channel_count=? WHERE id=?",sectionID,p.Name,p.IP,p.Username,p.Password,p.Password,enabled,sortOrder,channels,id)
 		if err!=nil{http.Error(w,err.Error(),409);return};if n,_:=res.RowsAffected();n==0{http.Error(w,"DVR not found",404);return}
-		_,_=s.db.Exec("UPDATE cameras SET section_id=?,name=CONCAT(?, ' / CH', LPAD(dvr_channel,2,'0')),enabled=?,autostart=? WHERE dvr_device_id=? AND source_type='dvr'",sectionID,p.Name,enabled,autostart,id)
+		_,_=s.db.Exec("UPDATE cameras SET section_id=?,name=CONCAT(?, ' / CH', LPAD(dvr_channel,2,'0')),enabled=CASE WHEN dvr_channel<=? THEN ? ELSE 0 END,autostart=? WHERE dvr_device_id=? AND source_type='dvr'",sectionID,p.Name,channels,enabled,autostart,id)
+		var dvrIP,dvrUser,dvrPass string
+		if err:=s.db.QueryRow("SELECT ip,COALESCE(username,''),COALESCE(password,'') FROM dvr_devices WHERE id=?",id).Scan(&dvrIP,&dvrUser,&dvrPass);err==nil&&dvrIP!=""{
+			for ch:=1;ch<=channels;ch++{
+				var n int
+				if err:=s.db.QueryRow("SELECT COUNT(*) FROM cameras WHERE dvr_device_id=? AND source_type='dvr' AND dvr_channel=?",id,ch).Scan(&n);err!=nil||n>0{continue}
+				slug:=fmt.Sprintf("dvr-%d-ch-%02d",id,ch)
+				camName:=fmt.Sprintf("%s / CH%02d",p.Name,ch)
+				mainRTSP:=fmt.Sprintf("rtsp://%s:554/Streaming/Channels/%d",dvrIP,ch*100+1)
+				if _,err:=s.db.Exec("INSERT INTO cameras (section_id,slug,name,rtsp_url,enabled,autostart,sort_order,source_type,dvr_device_id,dvr_channel) VALUES (?,?,?,?,?,?,?,?,?,?)",sectionID,slug,camName,mainRTSP,enabled,autostart,sortOrder+ch-1,"dvr",id,ch);err!=nil{http.Error(w,err.Error(),409);return}
+			}
+		}
 		if err:=s.stopDVRChannels(id);err!=nil{http.Error(w,err.Error(),500);return}
 		if err:=s.reloadCameras();err!=nil{http.Error(w,err.Error(),500);return}
 		if enabled&&autostart{
