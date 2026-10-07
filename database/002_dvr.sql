@@ -25,3 +25,6 @@ ALTER TABLE cameras
 
 CREATE INDEX IF NOT EXISTS idx_cameras_dvr_device ON cameras (dvr_device_id);
 CREATE INDEX IF NOT EXISTS idx_cameras_source_type ON cameras (source_type);
+
+ALTER TABLE cameras
+  ADD CONSTRAINT fk_cameras_dvr_device FOREIGN KEY (dvr_device_id) REFERENCES dvr_devices(id) ON DELETE CASCADE;
