@@ -1619,23 +1619,45 @@ type authUser struct {
 	AllCameras bool
 }
 
-const sessionDuration = 12 * time.Hour
+// Login persists until the user explicitly logs out.
+// The session is also refreshed on authenticated requests so it cannot expire during normal use.
+const sessionDuration = 3650 * 24 * time.Hour
+
+func sessionTokenHash(r *http.Request) (string, bool) {
+	c, err := r.Cookie("video_session")
+	if err != nil || c.Value == "" {
+		return "", false
+	}
+	sum := sha256.Sum256([]byte(c.Value))
+	return fmt.Sprintf("%x", sum[:]), true
+}
 
 func (s *Server) currentUser(r *http.Request) (authUser, bool) {
-	c, err := r.Cookie("video_session")
-	if err != nil || c.Value == "" { return authUser{}, false }
-	sum := sha256.Sum256([]byte(c.Value))
+	tokenHash, ok := sessionTokenHash(r)
+	if !ok { return authUser{}, false }
 	var u authUser
 	var admin, canControl, allSections, allCameras int
-	err = s.db.QueryRow("SELECT u.id,u.username,u.display_name,EXISTS(SELECT 1 FROM user_roles ur JOIN roles rr ON rr.id=ur.role_id WHERE ur.user_id=u.id AND rr.code='admin'),EXISTS(SELECT 1 FROM user_roles ur JOIN roles rr ON rr.id=ur.role_id JOIN role_permissions rp ON rp.role_id=rr.id WHERE ur.user_id=u.id AND rp.permission='camera.control'),u.all_sections,u.all_cameras FROM sessions se JOIN users u ON u.id=se.user_id WHERE se.token_hash=? AND se.expires_at>NOW(3) AND u.is_active=1", fmt.Sprintf("%x",sum[:])).Scan(&u.ID,&u.Username,&u.DisplayName,&admin,&canControl,&allSections,&allCameras)
+	err := s.db.QueryRow("SELECT u.id,u.username,u.display_name,EXISTS(SELECT 1 FROM user_roles ur JOIN roles rr ON rr.id=ur.role_id WHERE ur.user_id=u.id AND rr.code='admin'),EXISTS(SELECT 1 FROM user_roles ur JOIN roles rr ON rr.id=ur.role_id JOIN role_permissions rp ON rp.role_id=rr.id WHERE ur.user_id=u.id AND rp.permission='camera.control'),u.all_sections,u.all_cameras FROM sessions se JOIN users u ON u.id=se.user_id WHERE se.token_hash=? AND u.is_active=1", tokenHash).Scan(&u.ID,&u.Username,&u.DisplayName,&admin,&canControl,&allSections,&allCameras)
 	if err != nil { return authUser{}, false }
 	u.Admin=admin!=0; u.CanControl=canControl!=0; u.AllSections=allSections!=0; u.AllCameras=allCameras!=0
 	return u,true
 }
 
+func (s *Server) refreshSession(w http.ResponseWriter, r *http.Request) {
+	tokenHash, ok := sessionTokenHash(r)
+	if !ok { return }
+	if _, err := s.db.Exec("UPDATE sessions SET expires_at=? WHERE token_hash=?", time.Now().Add(sessionDuration), tokenHash); err != nil {
+		return
+	}
+	if c, err := r.Cookie("video_session"); err == nil && c.Value != "" {
+		setSessionCookie(w, c.Value)
+	}
+}
+
 func (s *Server) requireAuth(w http.ResponseWriter,r *http.Request)(authUser,bool){
 	u,ok:=s.currentUser(r)
 	if !ok { jsonResponseStatus(w,http.StatusUnauthorized,map[string]any{"error":"unauthorized"}); return authUser{},false }
+	s.refreshSession(w,r)
 	return u,true
 }
 
@@ -1668,7 +1690,15 @@ func (s *Server) createSession(userID int64)(string,error){
 func setSessionCookie(w http.ResponseWriter,token string){http.SetCookie(w,&http.Cookie{Name:"video_session",Value:token,Path:"/",HttpOnly:true,SameSite:http.SameSiteLaxMode,MaxAge:int(sessionDuration.Seconds())})}
 
 func (s *Server) authStatus(w http.ResponseWriter,r *http.Request){
-	var n int;if err:=s.db.QueryRow("SELECT COUNT(*) FROM users").Scan(&n);err!=nil{http.Error(w,err.Error(),500);return};u,ok:=s.currentUser(r);var user any=nil;if ok{user=map[string]any{"id":u.ID,"username":u.Username,"display_name":u.DisplayName,"admin":u.Admin,"can_control":u.CanControl}};jsonResponse(w,map[string]any{"setup_required":n==0,"authenticated":ok,"user":user})
+	var n int
+	if err:=s.db.QueryRow("SELECT COUNT(*) FROM users").Scan(&n);err!=nil{http.Error(w,err.Error(),500);return}
+	u,ok:=s.currentUser(r)
+	var user any=nil
+	if ok{
+		s.refreshSession(w,r)
+		user=map[string]any{"id":u.ID,"username":u.Username,"display_name":u.DisplayName,"admin":u.Admin,"can_control":u.CanControl}
+	}
+	jsonResponse(w,map[string]any{"setup_required":n==0,"authenticated":ok,"user":user})
 }
 
 func (s *Server) authLogin(w http.ResponseWriter,r *http.Request){
