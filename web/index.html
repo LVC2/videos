@@ -352,14 +352,18 @@ computed:{
     if(this.focusedCameraId){
       return {'--monitor-cols':2,'--monitor-rows':Math.max(1,count-1)};
     }
-    if(count<=0)return {'--monitor-cols':1,'--monitor-rows':1};
-    let cols=1;
-    if(count<=4)cols=2;
-    else if(count<=9)cols=3;
-    else if(count<=16)cols=4;
-    else if(count<=64)cols=8;
-    else cols=16;
-    return {'--monitor-cols':cols,'--monitor-rows':Math.ceil(count/cols)};
+    const layouts={
+      1:{cols:1,rows:1},
+      4:{cols:2,rows:2},
+      6:{cols:3,rows:2},
+      9:{cols:3,rows:3},
+      16:{cols:4,rows:4},
+      32:{cols:8,rows:4},
+      64:{cols:8,rows:8},
+      128:{cols:16,rows:8}
+    };
+    const layout=layouts[this.gridSize]||layouts[4];
+    return {'--monitor-cols':layout.cols,'--monitor-rows':layout.rows};
   }
 },
 mounted(){
