@@ -508,6 +508,14 @@ func (s *Server) createDVR(w http.ResponseWriter, r *http.Request) {
 	}
 	if err:=tx.Commit();err!=nil{http.Error(w,err.Error(),500);return}
 	if err:=s.reloadCameras();err!=nil{http.Error(w,err.Error(),500);return}
+	if enabled&&autostart{
+		for ch:=1;ch<=channels;ch++{
+			slug:=fmt.Sprintf("dvr-%d-ch-%02d",dvrID,ch)
+			if cam,ok:=s.findCamera(slug);ok{
+				if err:=s.start(cam);err!=nil{log.Printf("DVR channel %s autostart failed: %v",slug,err)}
+			}
+		}
+	}
 	jsonResponse(w,map[string]any{"status":"ok","id":dvrID,"channels":channels})
 }
 
