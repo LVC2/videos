@@ -42,6 +42,10 @@ type Camera struct {
 	SubRTSP     string
 	Enabled     bool
 	Autostart   bool
+	SourceType  string
+	DVRDeviceID sql.NullInt64
+	DVRChannel  int
+	DVRName     string
 	SectionID   sql.NullInt64
 	SectionName string
 	SortOrder   int
@@ -157,6 +161,8 @@ func main() {
 	mux.HandleFunc("/api/sections", s.sectionsAPI)
 	mux.HandleFunc("/api/sections/", s.sectionAction)
 	mux.HandleFunc("/api/cameras", s.camerasAPI)
+	mux.HandleFunc("/api/dvrs", s.dvrsAPI)
+	mux.HandleFunc("/api/dvrs/", s.dvrAction)
 	mux.HandleFunc("/api/scan", s.scanAPI)
 	mux.HandleFunc("/api/cameras/", s.cameraAction)
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
@@ -198,57 +204,61 @@ func loadConfig(path string) (Config, error) {
 func loadCameras(db *sql.DB) ([]Camera, error) {
 	const query = `SELECT c.id, c.slug, c.name, c.rtsp_url,
 		COALESCE(c.rtsp_username, ''), COALESCE(c.rtsp_password, ''),
-		c.enabled, c.autostart, c.section_id, COALESCE(s.name, ''), c.sort_order
+		c.enabled, c.autostart, COALESCE(c.source_type,'ip'), c.dvr_device_id, c.dvr_channel,
+		COALESCE(d.name, ''), COALESCE(d.ip, ''), COALESCE(d.username, ''), COALESCE(d.password, ''),
+		c.section_id, COALESCE(s.name, ''), c.sort_order
 		FROM cameras c
 		LEFT JOIN sections s ON s.id = c.section_id
+		LEFT JOIN dvr_devices d ON d.id = c.dvr_device_id
 		ORDER BY c.sort_order, c.id`
 
 	rows, err := db.Query(query)
-	if err != nil {
-		return nil, err
-	}
+	if err != nil { return nil, err }
 	defer rows.Close()
 
 	var cameras []Camera
 	for rows.Next() {
 		var dbID int64
-		var slug, name, rtspURL, username, password, sectionName string
+		var slug, name, rtspURL, username, password, sourceType, dvrName, dvrIP, dvrUser, dvrPass, sectionName string
 		var enabled, autostart bool
-		var sectionID sql.NullInt64
+		var dvrDeviceID, dvrChannel, sectionID sql.NullInt64
 		var sortOrder int
-		if err := rows.Scan(&dbID, &slug, &name, &rtspURL, &username, &password, &enabled, &autostart, &sectionID, &sectionName, &sortOrder); err != nil {
+		if err := rows.Scan(&dbID, &slug, &name, &rtspURL, &username, &password, &enabled, &autostart,
+			&sourceType, &dvrDeviceID, &dvrChannel, &dvrName, &dvrIP, &dvrUser, &dvrPass,
+			&sectionID, &sectionName, &sortOrder); err != nil {
 			return nil, err
 		}
 
-		u, err := url.Parse(rtspURL)
-		if err != nil || u.Hostname() == "" {
-			return nil, fmt.Errorf("invalid RTSP URL for camera %s", slug)
+		ip := ""
+		mainURL, subURL := rtspURL, rtspURL
+		dvrChannelNumber := 0
+		if sourceType == "dvr" {
+			if !dvrDeviceID.Valid || !dvrChannel.Valid || dvrIP == "" {
+				return nil, fmt.Errorf("invalid DVR channel configuration for camera %s", slug)
+			}
+			dvrChannelNumber = int(dvrChannel.Int64)
+			ip = dvrIP
+			mainURL = buildRTSPURL(fmt.Sprintf("rtsp://%s:554/Streaming/Channels/%d", dvrIP, dvrChannelNumber*100+1), dvrUser, dvrPass)
+			subURL = buildRTSPURL(fmt.Sprintf("rtsp://%s:554/Streaming/Channels/%d", dvrIP, dvrChannelNumber*100+2), dvrUser, dvrPass)
+		} else {
+			u, err := url.Parse(rtspURL)
+			if err != nil || u.Hostname() == "" {
+				return nil, fmt.Errorf("invalid RTSP URL for camera %s", slug)
+			}
+			u.User = nil
+			ip = u.Hostname()
+			mainURL = buildRTSPURL("rtsp://"+u.Host+"/Streaming/Channels/101", username, password)
+			subURL = buildRTSPURL("rtsp://"+u.Host+"/Streaming/Channels/102", username, password)
 		}
-		u.User = nil
-		ip := u.Hostname()
-		mainURL := buildRTSPURL("rtsp://"+u.Host+"/Streaming/Channels/101", username, password)
-		subURL := buildRTSPURL("rtsp://"+u.Host+"/Streaming/Channels/102", username, password)
 
 		cameras = append(cameras, Camera{
-			DBID:        dbID,
-			ID:          slug,
-			Name:        name,
-			IP:          ip,
-			Username:    username,
-			Password:    password,
-			RTSP:        mainURL,
-			SubRTSP:     subURL,
-			Enabled:     enabled,
-			Autostart:   autostart,
-			SectionID:   sectionID,
-			SectionName: sectionName,
-			SortOrder:   sortOrder,
+			DBID: dbID, ID: slug, Name: name, IP: ip, Username: username, Password: password,
+			RTSP: mainURL, SubRTSP: subURL, Enabled: enabled, Autostart: autostart,
+			SourceType: sourceType, DVRDeviceID: dvrDeviceID, DVRChannel: dvrChannelNumber, DVRName: dvrName,
+			SectionID: sectionID, SectionName: sectionName, SortOrder: sortOrder,
 		})
 	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-
+	if err := rows.Err(); err != nil { return nil, err }
 	log.Printf("loaded %d cameras from MariaDB", len(cameras))
 	return cameras, nil
 }
@@ -294,6 +304,18 @@ type cameraPayload struct {
 	Autostart *bool  `json:"autostart"`
 	SectionID *int64 `json:"section_id"`
 	SortOrder *int    `json:"sort_order"`
+}
+
+type dvrPayload struct {
+	Name      string `json:"name"`
+	IP        string `json:"ip"`
+	Username  string `json:"username"`
+	Password  string `json:"password"`
+	Enabled   *bool  `json:"enabled"`
+	Autostart *bool `json:"autostart"`
+	SectionID *int64 `json:"section_id"`
+	SortOrder *int    `json:"sort_order"`
+	Channels  *int    `json:"channels"`
 }
 
 type sectionPayload struct {
@@ -419,6 +441,116 @@ func (s *Server) sectionAction(w http.ResponseWriter, r *http.Request) {
 	default:
 		w.WriteHeader(http.StatusMethodNotAllowed)
 	}
+}
+
+func (s *Server) dvrsAPI(w http.ResponseWriter, r *http.Request) {
+	user, ok := s.requireAuth(w, r); if !ok { return }
+	if !user.Admin { http.Error(w, "forbidden", http.StatusForbidden); return }
+	switch r.Method {
+	case http.MethodGet:
+		s.listDVRs(w, r)
+	case http.MethodPost:
+		s.createDVR(w, r)
+	default:
+		w.WriteHeader(http.StatusMethodNotAllowed)
+	}
+}
+
+func (s *Server) listDVRs(w http.ResponseWriter, r *http.Request) {
+	rows, err := s.db.Query(`SELECT d.id,d.name,d.ip,COALESCE(d.username,''),d.enabled,d.sort_order,d.section_id,COALESCE(s.name,''),COUNT(c.id)
+		FROM dvr_devices d
+		LEFT JOIN sections s ON s.id=d.section_id
+		LEFT JOIN cameras c ON c.dvr_device_id=d.id AND c.source_type='dvr'
+		GROUP BY d.id,d.name,d.ip,d.username,d.enabled,d.sort_order,d.section_id,s.name
+		ORDER BY d.sort_order,d.id`)
+	if err != nil { http.Error(w, err.Error(), 500); return }
+	defer rows.Close()
+	type item struct {
+		ID int64 `json:"id"`
+		Name string `json:"name"`
+		IP string `json:"ip"`
+		Username string `json:"username"`
+		Enabled bool `json:"enabled"`
+		SortOrder int `json:"sort_order"`
+		SectionID *int64 `json:"section_id,omitempty"`
+		SectionName string `json:"section_name,omitempty"`
+		Channels int `json:"channels"`
+	}
+	out:=make([]item,0)
+	for rows.Next(){
+		var it item; var sid sql.NullInt64
+		if err:=rows.Scan(&it.ID,&it.Name,&it.IP,&it.Username,&it.Enabled,&it.SortOrder,&sid,&it.SectionName,&it.Channels);err!=nil{http.Error(w,err.Error(),500);return}
+		if sid.Valid{v:=sid.Int64;it.SectionID=&v}
+		out=append(out,it)
+	}
+	if err:=rows.Err();err!=nil{http.Error(w,err.Error(),500);return}
+	jsonResponse(w,out)
+}
+
+func (s *Server) createDVR(w http.ResponseWriter, r *http.Request) {
+	var p dvrPayload
+	if err:=decodeJSON(r,&p);err!=nil{http.Error(w,err.Error(),400);return}
+	p.Name=strings.TrimSpace(p.Name);p.IP=strings.TrimSpace(p.IP);p.Username=strings.TrimSpace(p.Username)
+	if p.Name==""{http.Error(w,"name is required",400);return}
+	if net.ParseIP(p.IP)==nil||p.Username==""||p.Password==""{http.Error(w,"ip, username and password are required",400);return}
+	channels:=16;if p.Channels!=nil&&*p.Channels>0{channels=*p.Channels};if channels>32{channels=32}
+	enabled,autostart,sortOrder:=payloadDefaults(cameraPayload{Enabled:p.Enabled,Autostart:p.Autostart,SortOrder:p.SortOrder})
+	var sectionID any;if p.SectionID!=nil&&*p.SectionID>0{sectionID=*p.SectionID}
+
+	tx,err:=s.db.Begin();if err!=nil{http.Error(w,err.Error(),500);return};defer tx.Rollback()
+	res,err:=tx.Exec("INSERT INTO dvr_devices (section_id,name,ip,username,password,enabled,sort_order) VALUES (?,?,?,?,?,?,?)",sectionID,p.Name,p.IP,p.Username,p.Password,enabled,sortOrder);if err!=nil{http.Error(w,err.Error(),409);return}
+	dvrID,err:=res.LastInsertId();if err!=nil{http.Error(w,err.Error(),500);return}
+	for ch:=1;ch<=channels;ch++{
+		slug:=fmt.Sprintf("dvr-%d-ch-%02d",dvrID,ch)
+		camName:=fmt.Sprintf("%s / CH%02d",p.Name,ch)
+		mainRTSP:=fmt.Sprintf("rtsp://%s:554/Streaming/Channels/%d",p.IP,ch*100+1)
+		if _,err:=tx.Exec("INSERT INTO cameras (section_id,slug,name,rtsp_url,enabled,autostart,sort_order,source_type,dvr_device_id,dvr_channel) VALUES (?,?,?,?,?,?,?,?,?,?)",sectionID,slug,camName,mainRTSP,enabled,autostart,sortOrder+ch-1,"dvr",dvrID,ch);err!=nil{http.Error(w,err.Error(),409);return}
+	}
+	if err:=tx.Commit();err!=nil{http.Error(w,err.Error(),500);return}
+	if err:=s.reloadCameras();err!=nil{http.Error(w,err.Error(),500);return}
+	jsonResponse(w,map[string]any{"status":"ok","id":dvrID,"channels":channels})
+}
+
+func (s *Server) dvrAction(w http.ResponseWriter, r *http.Request) {
+	user,ok:=s.requireAuth(w,r);if !ok{return}
+	if !user.Admin{http.Error(w,"forbidden",http.StatusForbidden);return}
+	idText:=strings.TrimPrefix(r.URL.Path,"/api/dvrs/");if idText==""||strings.Contains(idText,"/"){http.Error(w,"invalid dvr id",400);return}
+	var id int64;if _,err:=fmt.Sscanf(idText,"%d",&id);err!=nil||id<=0{http.Error(w,"invalid dvr id",400);return}
+	switch r.Method{
+	case http.MethodPut:
+		var p dvrPayload;if err:=decodeJSON(r,&p);err!=nil{http.Error(w,err.Error(),400);return}
+		p.Name=strings.TrimSpace(p.Name);p.IP=strings.TrimSpace(p.IP);p.Username=strings.TrimSpace(p.Username)
+		if p.Name==""||net.ParseIP(p.IP)==nil||p.Username==""{http.Error(w,"name, ip and username are required",400);return}
+		enabled,autostart,sortOrder:=payloadDefaults(cameraPayload{Enabled:p.Enabled,Autostart:p.Autostart,SortOrder:p.SortOrder})
+		var sectionID any;if p.SectionID!=nil&&*p.SectionID>0{sectionID=*p.SectionID}
+		res,err:=s.db.Exec("UPDATE dvr_devices SET section_id=?,name=?,ip=?,username=?,password=CASE WHEN ?<>'' THEN ? ELSE password END,enabled=?,sort_order=? WHERE id=?",sectionID,p.Name,p.IP,p.Username,p.Password,p.Password,enabled,sortOrder,id)
+		if err!=nil{http.Error(w,err.Error(),409);return};if n,_:=res.RowsAffected();n==0{http.Error(w,"DVR not found",404);return}
+		_,_=s.db.Exec("UPDATE cameras SET section_id=?,name=CONCAT(?, ' / CH', LPAD(dvr_channel,2,'0')),enabled=?,autostart=? WHERE dvr_device_id=? AND source_type='dvr'",sectionID,p.Name,enabled,autostart,id)
+		if err:=s.stopDVRChannels(id);err!=nil{http.Error(w,err.Error(),500);return}
+		if err:=s.reloadCameras();err!=nil{http.Error(w,err.Error(),500);return}
+		if enabled&&autostart{
+			rows,err:=s.db.Query("SELECT slug FROM cameras WHERE dvr_device_id=? AND source_type='dvr'",id)
+			if err==nil{defer rows.Close();for rows.Next(){var slug string;if rows.Scan(&slug)==nil{if cam,ok:=s.findCamera(slug);ok{if err:=s.start(cam);err!=nil{log.Printf("DVR channel %s start failed: %v",slug,err)}}}}}
+		}
+		jsonResponse(w,map[string]any{"status":"ok"})
+	case http.MethodDelete:
+		if err:=s.stopDVRChannels(id);err!=nil{http.Error(w,err.Error(),500);return}
+		res,err:=s.db.Exec("DELETE FROM dvr_devices WHERE id=?",id);if err!=nil{http.Error(w,err.Error(),409);return};if n,_:=res.RowsAffected();n==0{http.Error(w,"DVR not found",404);return}
+		if err:=s.reloadCameras();err!=nil{http.Error(w,err.Error(),500);return}
+		jsonResponse(w,map[string]any{"status":"ok"})
+	default:w.WriteHeader(http.StatusMethodNotAllowed)
+	}
+}
+
+func (s *Server) stopDVRChannels(dvrID int64) error {
+	rows,err:=s.db.Query("SELECT slug FROM cameras WHERE dvr_device_id=? AND source_type='dvr'",dvrID)
+	if err!=nil{return err}
+	var ids []string
+	for rows.Next(){var id string;if err:=rows.Scan(&id);err!=nil{rows.Close();return err};ids=append(ids,id)}
+	rErr:=rows.Err();rows.Close()
+	if rErr!=nil{return rErr}
+	for _,id:=range ids{s.stop(id)}
+	return nil
 }
 
 func (s *Server) camerasAPI(w http.ResponseWriter, r *http.Request) {
@@ -588,6 +720,9 @@ func (s *Server) listCameras(w http.ResponseWriter, r *http.Request) {
 		SortOrder int `json:"sort_order"`
 		MainStream string `json:"main_stream"`
 		SubStream string `json:"sub_stream"`
+		SourceType string `json:"source_type"`
+		DVRName string `json:"dvr_name,omitempty"`
+		DVRChannel int `json:"dvr_channel,omitempty"`
 	}
 	s.mu.RLock()
 	out := make([]item, 0, len(s.cameras))
@@ -597,7 +732,7 @@ func (s *Server) listCameras(w http.ResponseWriter, r *http.Request) {
 		it := item{
 			DBID: c.DBID, ID: c.ID, Name: c.Name, Enabled: c.Enabled, Autostart: c.Autostart,
 			Running: rt != nil, SectionName: c.SectionName, SortOrder: c.SortOrder,
-			MainStream: c.ID + "_main", SubStream: c.ID + "_sub",
+			MainStream: c.ID + "_main", SubStream: c.ID + "_sub", SourceType: c.SourceType, DVRName: c.DVRName, DVRChannel: c.DVRChannel,
 		}
 		if c.SectionID.Valid {
 			v := c.SectionID.Int64
@@ -943,10 +1078,18 @@ func (s *Server) start(camera Camera) error {
 	s.runtimes[camera.ID] = rt
 	s.mu.Unlock()
 
-	s.probeSnapshot(camera.ID)
-	go s.motionLoop(ctx, camera)
-	log.Printf("camera %s started via go2rtc: main=%s sub=%s", camera.ID, camera.ID+"_main", camera.ID+"_sub")
-	return nil
+if camera.SourceType == "dvr" {
+		s.mu.Lock()
+		if current := s.runtimes[camera.ID]; current != nil {
+			current.StreamOK = true
+		}
+		s.mu.Unlock()
+	} else {
+		s.probeSnapshot(camera.ID)
+		go s.motionLoop(ctx, camera)
+	}
+	log.Printf("camera %s started via go2rtc: main=%s sub=%s source=%s", camera.ID, camera.ID+"_main", camera.ID+"_sub", camera.SourceType)
+		return nil
 }
 
 func (s *Server) stop(id string) {
