@@ -550,7 +550,7 @@ func (s *Server) dvrAction(w http.ResponseWriter, r *http.Request) {
 					}
 				}
 			}
-			jsonResponse(w,map[string]any{"status":"ok","channel":p.Channel,"enabled":p.Enabled});return
+			jsonResponse(w,map[string]any{"status":"ok","channel":p.Channel,"enabled":p.Enabled,"camera_id":slug});return
 		default:
 			w.WriteHeader(http.StatusMethodNotAllowed);return
 		}
