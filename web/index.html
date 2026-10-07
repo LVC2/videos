@@ -343,7 +343,7 @@ async removeUser(u){if(!confirm('Удалить пользователя «'+u.d
 async saveConfig(){try{this.config.motion_post_seconds=Number(this.config.motion_post_seconds)||0;await this.api('/api/config',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({RecordingDir:this.config.recording_dir,MotionPostSeconds:this.config.motion_post_seconds})});alert('Настройки сохранены')}catch(e){this.error=e.message}}
 },
 computed:{
-  ipCameras(){return this.cameras.filter(c=>c.source_type!=='dvr')},
+  ipCameras(){const source=this.currentUser&&this.currentUser.admin?this.allCameras:this.cameras;return source.filter(c=>c.source_type!=='dvr')},
   availableSections(){
     const map=new Map();
     for(const c of this.cameras){
