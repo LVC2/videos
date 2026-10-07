@@ -1638,8 +1638,16 @@ func (s *Server) authBootstrap(w http.ResponseWriter,r *http.Request){
 }
 
 func (s *Server) userCanViewCamera(u authUser,cameraID string)bool{
-	if u.Admin||u.AllCameras{return true};var sectionID sql.NullInt64;if err:=s.db.QueryRow("SELECT section_id FROM cameras WHERE slug=?",cameraID).Scan(&sectionID);err!=nil{return false};if u.AllSections&&sectionID.Valid{return true}
-	var n int;if err:=s.db.QueryRow("SELECT COUNT(*) FROM user_cameras uc JOIN cameras c ON c.id=uc.camera_id WHERE uc.user_id=? AND c.slug=?",u.ID,cameraID).Scan(&n);err==nil&&n>0{return true};if sectionID.Valid{_=s.db.QueryRow("SELECT COUNT(*) FROM user_sections WHERE user_id=? AND section_id=?",u.ID,sectionID.Int64).Scan(&n);if n>0{return true}};return false
+	if u.Admin||u.AllCameras{return true}
+	var sectionID sql.NullInt64
+	if err:=s.db.QueryRow("SELECT section_id FROM cameras WHERE slug=?",cameraID).Scan(&sectionID);err!=nil{return false}
+	var n int
+	if err:=s.db.QueryRow("SELECT COUNT(*) FROM user_cameras uc JOIN cameras c ON c.id=uc.camera_id WHERE uc.user_id=? AND c.slug=?",u.ID,cameraID).Scan(&n);err==nil&&n>0{return true}
+	if sectionID.Valid {
+		_=s.db.QueryRow("SELECT COUNT(*) FROM user_sections WHERE user_id=? AND section_id=?",u.ID,sectionID.Int64).Scan(&n)
+		if n>0{return true}
+	}
+	return false
 }
 
 type userPayload struct{Username string;Password string;DisplayName string;Role string;Scope string;SectionIDs []int64;CameraIDs []int64;Active *bool}
