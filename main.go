@@ -460,8 +460,6 @@ func (s *Server) listDVRs(w http.ResponseWriter, r *http.Request) {
 	rows, err := s.db.Query(`SELECT d.id,d.name,d.ip,COALESCE(d.username,''),d.enabled,d.sort_order,d.section_id,COALESCE(s.name,''),d.channel_count
 		FROM dvr_devices d
 		LEFT JOIN sections s ON s.id=d.section_id
-		LEFT JOIN cameras c ON c.dvr_device_id=d.id AND c.source_type='dvr'
-		GROUP BY d.id,d.name,d.ip,d.username,d.enabled,d.sort_order,d.section_id,s.name
 		ORDER BY d.sort_order,d.id`)
 	if err != nil { http.Error(w, err.Error(), 500); return }
 	defer rows.Close()
