@@ -329,7 +329,7 @@ func (s *Server) listSections(w http.ResponseWriter, r *http.Request) {
 	query := "SELECT s.id, s.name, s.sort_order FROM sections s WHERE s.is_active=1"
 	args := []any{}
 	if !user.Admin {
-		query += " AND EXISTS (SELECT 1 FROM user_sections us WHERE us.user_id=? AND us.section_id=s.id AND us.can_view=1) OR EXISTS (SELECT 1 FROM user_cameras uc JOIN cameras c ON c.id=uc.camera_id WHERE uc.user_id=? AND uc.can_view=1 AND c.section_id=s.id AND c.enabled=1)"
+		query += " AND (EXISTS (SELECT 1 FROM user_sections us WHERE us.user_id=? AND us.section_id=s.id AND us.can_view=1) OR EXISTS (SELECT 1 FROM user_cameras uc JOIN cameras c ON c.id=uc.camera_id WHERE uc.user_id=? AND uc.can_view=1 AND c.section_id=s.id AND c.enabled=1))"
 		args = []any{user.ID, user.ID}
 	}
 	query += " ORDER BY s.sort_order, s.id"
